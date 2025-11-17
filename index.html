@@ -101,6 +101,42 @@
             // Remove common prefixes
             line = line.replace(/^[-•*]\s*/, '');
             
+            // Normalize dashes - convert en dash (–) and em dash (—) to regular hyphen (-)
+            line = line.replace(/[–—]/g, '-');
+            
+            // Ignore header lines
+            if (line.match(/^(ingredients|directions|instructions|serves|servings|yield)/i)) {
+                return null;
+            }
+            
+            // Store original for "to taste" handling
+            const originalLine = line;
+            
+            // Remove parenthetical notes but keep them for reference
+            const parenMatch = line.match(/^(.+?)(\([^)]+\).*)$/);
+            let notes = '';
+            if (parenMatch) {
+                line = parenMatch[1].trim();
+                notes = parenMatch[2].trim();
+            }
+            
+            // Handle "to taste" - these are non-quantifiable
+            if (line.match(/to taste/i)) {
+                // Extract ingredient name before "to taste"
+                const ingredient = line.replace(/,?\s*to taste.*/i, '').trim();
+                return {
+                    original: originalLine,
+                    quantity: null,
+                    unit: 'to taste',
+                    ingredient: ingredient,
+                    type: 'seasoning',
+                    baseValue: 0,
+                    isRange: false,
+                    rangeOriginal: null,
+                    notes: notes
+                };
+            }
+            
             // Try to match: quantity unit ingredient
             // Supports: "2 cups flour", "1/2 cup sugar", "2 1/2 cups water", "2-1/2 cups" (mixed fraction), "1.5 tsp salt", "2-3 cups water", "3 eggs"
             const patterns = [
@@ -112,6 +148,8 @@
                 /^(\d+)\s+(\d+\/\d+)\s*-\s*(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 /^(\d+)\s*-\s*(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 /^(\d+)\s+(\d+\/\d+)\s*-\s*(\d+)\s+([a-zA-Z]+)\s+(.+)$/,
+                // Standalone fraction with unit: "1/4 cup" or "1/2 tsp"
+                /^(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Fraction or decimal with unit (with range support)
                 /^(\d+\/\d+|\d+\.\d+)\s*-\s*(\d+\/\d+|\d+\.\d+)\s*([a-zA-Z]+)\s+(.+)$/,
                 // Just number with unit
@@ -120,12 +158,16 @@
                 /^([½⅓⅔¼¾⅛⅜⅝⅞])\s*([a-zA-Z]+)\s+(.+)$/,
                 // Mixed fraction count: "2 1/2 eggs"
                 /^(\d+)\s+(\d+\/\d+)\s+(.+)$/,
+                // Standalone fraction count: "1/2 onion"
+                /^(\d+\/\d+)\s+(.+)$/,
                 // Ambiguous count: "2-1/2 eggs" or "2-3 eggs"
                 /^(\d+)\s*-\s*(\d+\/\d+|\d+)\s+(.+)$/,
                 // Count with range: "2-3 eggs"
                 /^(\d+\/\d+|\d+\.\d+)\s*-\s*(\d+\/\d+|\d+\.\d+)\s+(.+)$/,
                 // Unicode fraction count only
                 /^([½⅓⅔¼¾⅛⅜⅝⅞])\s+(.+)$/,
+                // Simple count: "4 eggs" or "3 potatoes"
+                /^(\d+)\s+(.+)$/,
             ];
 
             for (const pattern of patterns) {
@@ -190,8 +232,14 @@
                         }
                         quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
                     }
-                    // Fraction/decimal range: "1/2-3/4 cups"
+                    // Standalone fraction with unit: "1/4 cup honey"
                     else if (pattern === patterns[5]) {
+                        quantity = parseQuantity(match[1]);
+                        unit = match[2].toLowerCase();
+                        ingredient = match[3];
+                    }
+                    // Fraction/decimal range: "1/2-3/4 cups"
+                    else if (pattern === patterns[6]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -201,25 +249,56 @@
                         ingredient = match[4];
                     }
                     // Mixed fraction count: "2 1/2 eggs"
-                    else if (pattern === patterns[8]) {
+                    else if (pattern === patterns[9]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
                         ingredient = match[3];
                         
+                        // Clean up ingredient (remove commas and descriptions after comma)
+                        ingredient = ingredient.replace(/,.*$/, '').trim();
+                        
                         return {
-                            original: line,
+                            original: originalLine,
                             quantity,
                             unit: 'count',
-                            ingredient: ingredient.trim(),
+                            ingredient: ingredient,
                             type: 'count',
                             baseValue: quantity,
                             isRange,
-                            rangeOriginal
+                            rangeOriginal,
+                            notes
+                        };
+                    }
+                    // Standalone fraction count: "1/2 onion"
+                    else if (pattern === patterns[10]) {
+                        quantity = parseQuantity(match[1]);
+                        ingredient = match[2];
+                        
+                        // Clean up ingredient (remove commas and descriptions after comma)
+                        ingredient = ingredient.replace(/,.*$/, '').trim();
+                        
+                        // Check if this might actually be a unit-based ingredient
+                        const firstWord = ingredient.split(/\s+/)[0]?.toLowerCase();
+                        if (VOLUME_CONVERSIONS[firstWord] || WEIGHT_CONVERSIONS[firstWord]) {
+                            // This is actually "1/2 cup something" - continue to next pattern
+                            continue;
+                        }
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes
                         };
                     }
                     // Handle ambiguous "2-1/2" format for count - could be range or mixed fraction
-                    else if (pattern === patterns[9]) {
+                    else if (pattern === patterns[11]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -237,19 +316,23 @@
                             ingredient = match[3];
                         }
                         
+                        // Clean up ingredient (remove commas and descriptions after comma)
+                        ingredient = ingredient.replace(/,.*$/, '').trim();
+                        
                         return {
-                            original: line,
+                            original: originalLine,
                             quantity,
                             unit: 'count',
-                            ingredient: ingredient.trim(),
+                            ingredient: ingredient,
                             type: 'count',
                             baseValue: quantity,
                             isRange,
-                            rangeOriginal
+                            rangeOriginal,
+                            notes
                         };
                     }
                     // Fraction/decimal range for count
-                    else if (pattern === patterns[10]) {
+                    else if (pattern === patterns[12]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -257,68 +340,110 @@
                         quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
                         ingredient = match[3];
                         
+                        // Clean up ingredient (remove commas and descriptions after comma)
+                        ingredient = ingredient.replace(/,.*$/, '').trim();
+                        
                         return {
-                            original: line,
+                            original: originalLine,
                             quantity,
                             unit: 'count',
-                            ingredient: ingredient.trim(),
+                            ingredient: ingredient,
                             type: 'count',
                             baseValue: quantity,
                             isRange,
-                            rangeOriginal
+                            rangeOriginal,
+                            notes
                         };
                     }
                     // Unicode fraction count: "½ onion"
-                    else if (pattern === patterns[11]) {
+                    else if (pattern === patterns[13]) {
                         quantity = parseUnicodeFraction(match[1]);
                         ingredient = match[2];
                         
+                        // Clean up ingredient (remove commas and descriptions after comma)
+                        ingredient = ingredient.replace(/,.*$/, '').trim();
+                        
                         return {
-                            original: line,
+                            original: originalLine,
                             quantity,
                             unit: 'count',
-                            ingredient: ingredient.trim(),
+                            ingredient: ingredient,
                             type: 'count',
                             baseValue: quantity,
                             isRange,
-                            rangeOriginal
+                            rangeOriginal,
+                            notes
+                        };
+                    }
+                    // Simple count: "4 chicken thighs" - LAST RESORT (most general)
+                    else if (pattern === patterns[14]) {
+                        quantity = parseInt(match[1]);
+                        ingredient = match[2];
+                        
+                        // Clean up ingredient (remove commas and descriptions after comma)
+                        ingredient = ingredient.replace(/,.*$/, '').trim();
+                        
+                        // Only treat as count if it doesn't look like it should have a unit
+                        // Check if the next word after the number is a known unit
+                        const firstWord = ingredient.split(/\s+/)[0]?.toLowerCase();
+                        if (VOLUME_CONVERSIONS[firstWord] || WEIGHT_CONVERSIONS[firstWord]) {
+                            // This is actually a unit-based ingredient, let it fall through
+                            continue;
+                        }
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes
                         };
                     }
                     // Simple unit-based
-                    else if (pattern === patterns[6]) {
+                    else if (pattern === patterns[7]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Unicode fraction with unit
-                    else if (pattern === patterns[7]) {
+                    else if (pattern === patterns[8]) {
                         quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
+                    }
+
+                    // Clean up ingredient (remove commas and descriptions after comma)
+                    if (ingredient) {
+                        ingredient = ingredient.replace(/,.*$/, '').trim();
                     }
 
                     // Determine if volume or weight
                     let type = null;
                     let baseValue = null;
 
-                    if (VOLUME_CONVERSIONS[unit]) {
+                    if (unit && VOLUME_CONVERSIONS[unit]) {
                         type = 'volume';
                         baseValue = quantity * VOLUME_CONVERSIONS[unit];
-                    } else if (WEIGHT_CONVERSIONS[unit]) {
+                    } else if (unit && WEIGHT_CONVERSIONS[unit]) {
                         type = 'weight';
                         baseValue = quantity * WEIGHT_CONVERSIONS[unit];
                     }
 
                     if (type) {
                         return {
-                            original: line,
+                            original: originalLine,
                             quantity,
                             unit,
-                            ingredient: ingredient.trim(),
+                            ingredient: ingredient,
                             type,
                             baseValue,
                             isRange,
-                            rangeOriginal
+                            rangeOriginal,
+                            notes
                         };
                     }
                 }
@@ -372,11 +497,80 @@
             const [targetServings, setTargetServings] = useState(8);
             const [useMetric, setUseMetric] = useState(false);
             const [parsedIngredients, setParsedIngredients] = useState([]);
+            const [unparsedLines, setUnparsedLines] = useState([]);
             const [savedRecipes, setSavedRecipes] = useState([]);
             const [recipeName, setRecipeName] = useState('');
             const [showSaved, setShowSaved] = useState(false);
             const [rangeHandling, setRangeHandling] = useState('average'); // 'low', 'average', 'high'
             const [copySuccess, setCopySuccess] = useState(false);
+            const [unitOverrides, setUnitOverrides] = useState({}); // Track individual ingredient unit preferences
+            const [currentPage, setCurrentPage] = useState('scaler'); // 'scaler' or 'settings'
+            const [customConversions, setCustomConversions] = useState({});
+            const [newConversionFrom, setNewConversionFrom] = useState('');
+            const [newConversionTo, setNewConversionTo] = useState('');
+            const [newConversionRatio, setNewConversionRatio] = useState('');
+            const [newConversionNote, setNewConversionNote] = useState('');
+
+            // Common ambiguous items that should show warnings
+            const AMBIGUOUS_ITEMS = {
+                // Imprecise measurements
+                'pinch': { measurement: '~1/16 tsp (0.3 mL)', note: 'Amount held between thumb + forefinger' },
+                'dash': { measurement: '~1/8 tsp (0.6 mL)', note: 'Often a bit more than a pinch' },
+                'smidgen': { measurement: '~1/32 tsp (0.15 mL)', note: 'Half a pinch; rarely used' },
+                'drop': { measurement: '~0.05 mL', note: 'A literal droplet' },
+                'hint': { measurement: '~1/32–1/16 tsp', note: 'Very small flavor amount; inconsistent' },
+                'sprinkle': { measurement: '1 pinch to 1 tsp', note: 'Depends heavily on ingredient' },
+                'dusting': { measurement: '~1–2 tsp', note: 'Very thin layer, usually powdered sugar or cocoa' },
+                'drizzle': { measurement: '1–2 tsp', note: 'Thin liquid stream' },
+                'splash': { measurement: '1–2 tsp', note: 'Liquids like vinegar or wine' },
+                'glug': { measurement: '1–2 tbsp', note: 'Sound-based measure, usually olive oil' },
+                'handful': { measurement: '1/4 to 1 cup', note: "Depends on the cook's hand" },
+                
+                // Heaping/scant measurements
+                'heaping': { measurement: '10–20% over level', note: 'Mounded measurement' },
+                'rounded': { measurement: '~1.25x level', note: 'Similar to heaping' },
+                'scant': { measurement: '10–20% under level', note: 'Slightly less than level' },
+                
+                // Size descriptors
+                'small': { measurement: 'Varies by item', note: 'Subjective size descriptor' },
+                'medium': { measurement: 'Varies by item', note: 'Subjective size descriptor' },
+                'large': { measurement: 'Varies by item', note: 'Subjective size descriptor' },
+                
+                // Garlic
+                'clove': { measurement: '3–7 g each', note: 'Garlic clove size varies significantly' },
+                'cloves': { measurement: '3–7 g each', note: 'Garlic clove size varies significantly' },
+                'bulb': { measurement: '10-15 cloves', note: 'Garlic bulb size varies by type' },
+                'bulbs': { measurement: '10-15 cloves', note: 'Garlic bulb size varies by type' },
+                'head': { measurement: '10-15 cloves', note: 'Garlic head size varies by type' },
+                'heads': { measurement: '10-15 cloves', note: 'Garlic head size varies by type' },
+                
+                // Ginger
+                'knob': { measurement: '1–2 tbsp grated (10–20 g)', note: 'Thumb-sized piece' },
+                
+                // Herbs
+                'sprig': { measurement: '2–4 in long, ~1 tsp chopped', note: 'Size varies (thyme, rosemary, etc.)' },
+                'sprigs': { measurement: '2–4 in long, ~1 tsp chopped', note: 'Size varies (thyme, rosemary, etc.)' },
+                'bunch': { measurement: '1–2 oz (30–60 g)', note: 'Very inconsistent measurement' },
+                'bunches': { measurement: '1–2 oz (30–60 g)', note: 'Very inconsistent measurement' },
+                'leaf': { measurement: '0.5–1 g each', note: 'Size varies (basil, mint, etc.)' },
+                'leaves': { measurement: '0.5–1 g each', note: 'Size varies (basil, mint, etc.)' },
+                
+                // Butter
+                'stick': { measurement: '1/2 cup (113 g)', note: 'U.S. standard stick of butter' },
+                'cube': { measurement: '1 tbsp (14 g)', note: 'Often 1 tbsp piece of butter' },
+                
+                // Meat cuts
+                'slab': { measurement: 'No standard', note: 'Context needed for size' },
+                'rasher': { measurement: '1 slice', note: 'Common in UK/Canada for bacon' },
+                'fillet': { measurement: '1 whole piece', note: 'Size depends on fish/cut' },
+                'filet': { measurement: '1 whole piece', note: 'Size depends on fish/cut' },
+                
+                // Containers
+                'can': { measurement: 'Varies', note: 'Container sizes vary by brand' },
+                'cans': { measurement: 'Varies', note: 'Container sizes vary by brand' },
+                'jar': { measurement: 'Varies', note: 'Container sizes vary by brand' },
+                'jars': { measurement: 'Varies', note: 'Container sizes vary by brand' },
+            };
 
             // Load saved recipes from localStorage
             useEffect(() => {
@@ -384,34 +578,166 @@
                 if (saved) {
                     setSavedRecipes(JSON.parse(saved));
                 }
+                
+                const conversions = localStorage.getItem('customConversions');
+                if (conversions) {
+                    setCustomConversions(JSON.parse(conversions));
+                } else {
+                    // Set default conversions on first load
+                    const defaultConversions = {
+                        'garlic bulb': { to: 'cloves', ratio: 12, note: 'Varies by size' },
+                        'garlic head': { to: 'cloves', ratio: 12, note: 'Varies by size' },
+                        'medium onion': { to: 'cups chopped', ratio: 1.5, note: 'Standard medium size' },
+                        'large onion': { to: 'cups chopped', ratio: 2, note: 'Standard large size' },
+                        'small onion': { to: 'cups chopped', ratio: 0.75, note: 'Standard small size' },
+                        'bunch parsley': { to: 'cup chopped', ratio: 1, note: 'Fresh herbs' },
+                        'bunch cilantro': { to: 'cup chopped', ratio: 1, note: 'Fresh herbs' },
+                        'bunch basil': { to: 'cup chopped', ratio: 0.5, note: 'Fresh herbs' },
+                        'medium lemon': { to: 'tbsp juice', ratio: 3, note: 'Fresh lemon' },
+                        'medium lime': { to: 'tbsp juice', ratio: 2, note: 'Fresh lime' },
+                        'can tomatoes': { to: 'oz', ratio: 14.5, note: 'Standard can size' },
+                        'medium carrot': { to: 'cup chopped', ratio: 0.5, note: 'Diced' },
+                        'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard stick' },
+                        'pinch': { to: 'tsp', ratio: 0.0625, note: '~1/16 tsp' },
+                        'dash': { to: 'tsp', ratio: 0.125, note: '~1/8 tsp' },
+                        'handful': { to: 'cup', ratio: 0.5, note: 'Approximate, varies by hand' },
+                        'knob ginger': { to: 'tbsp grated', ratio: 1.5, note: 'Thumb-sized piece' },
+                        'sprig': { to: 'tsp chopped', ratio: 1, note: 'Fresh herbs like thyme, rosemary' },
+                    };
+                    setCustomConversions(defaultConversions);
+                    localStorage.setItem('customConversions', JSON.stringify(defaultConversions));
+                }
             }, []);
+
+            const addCustomConversion = () => {
+                if (!newConversionFrom || !newConversionTo || !newConversionRatio) {
+                    alert('Please fill in From, To, and Ratio fields');
+                    return;
+                }
+                
+                const ratio = parseFloat(newConversionRatio);
+                if (isNaN(ratio) || ratio <= 0) {
+                    alert('Ratio must be a positive number');
+                    return;
+                }
+                
+                const updated = {
+                    ...customConversions,
+                    [newConversionFrom.toLowerCase()]: {
+                        to: newConversionTo.toLowerCase(),
+                        ratio: ratio,
+                        note: newConversionNote || ''
+                    }
+                };
+                
+                setCustomConversions(updated);
+                localStorage.setItem('customConversions', JSON.stringify(updated));
+                
+                setNewConversionFrom('');
+                setNewConversionTo('');
+                setNewConversionRatio('');
+                setNewConversionNote('');
+            };
+
+            const deleteCustomConversion = (key) => {
+                const updated = { ...customConversions };
+                delete updated[key];
+                setCustomConversions(updated);
+                localStorage.setItem('customConversions', JSON.stringify(updated));
+            };
+
+            const isAmbiguous = (ingredient) => {
+                const lowerIngredient = ingredient.ingredient.toLowerCase();
+                return Object.keys(AMBIGUOUS_ITEMS).some(item => lowerIngredient.includes(item));
+            };
+
+            const getAmbiguityWarning = (ingredient) => {
+                const lower = ingredient.ingredient.toLowerCase();
+                
+                // Find matching ambiguous term
+                for (const [term, info] of Object.entries(AMBIGUOUS_ITEMS)) {
+                    if (lower.includes(term)) {
+                        return `${info.note} (~${info.measurement})`;
+                    }
+                }
+                
+                return 'Measurement may vary';
+            };
 
             const parseInput = () => {
                 const lines = inputText.split('\n');
                 const ingredients = [];
+                const unparsed = [];
                 
                 for (const line of lines) {
-                    const parsed = parseIngredient(line, rangeHandling);
-                    if (parsed) {
-                        ingredients.push(parsed);
+                    if (line.trim()) {
+                        const parsed = parseIngredient(line, rangeHandling);
+                        if (parsed) {
+                            ingredients.push(parsed);
+                        } else {
+                            unparsed.push(line.trim());
+                        }
                     }
                 }
                 
                 setParsedIngredients(ingredients);
+                setUnparsedLines(unparsed);
             };
 
-            const scaleIngredient = (ingredient) => {
+            const scaleIngredient = (ingredient, idx) => {
+                // "To taste" items don't scale
+                if (ingredient.type === 'seasoning') {
+                    return { value: '', unit: 'to taste' };
+                }
+                
                 const scaleFactor = targetServings / originalServings;
                 const scaledBaseValue = ingredient.baseValue * scaleFactor;
                 
+                // Check if there's a unit override for this ingredient
+                const overrideUnit = unitOverrides[idx];
+                
                 if (ingredient.type === 'volume') {
+                    if (overrideUnit) {
+                        // Convert to specific unit
+                        const conversionFactor = VOLUME_CONVERSIONS[overrideUnit];
+                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                    }
                     return smartConvertVolume(scaledBaseValue, useMetric);
                 } else if (ingredient.type === 'weight') {
+                    if (overrideUnit) {
+                        // Convert to specific unit
+                        const conversionFactor = WEIGHT_CONVERSIONS[overrideUnit];
+                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                    }
                     return smartConvertWeight(scaledBaseValue, useMetric);
                 } else if (ingredient.type === 'count') {
                     // For count items, just scale the number
                     return { value: scaledBaseValue, unit: '' };
                 }
+            };
+
+            const getUnitOptions = (ingredient) => {
+                if (ingredient.type === 'volume') {
+                    if (useMetric) {
+                        return ['ml', 'l'];
+                    } else {
+                        return ['tsp', 'tbsp', 'fl oz', 'cup', 'pt', 'qt', 'gal'];
+                    }
+                } else if (ingredient.type === 'weight') {
+                    if (useMetric) {
+                        return ['g', 'kg'];
+                    } else {
+                        return ['oz', 'lb'];
+                    }
+                }
+                return [];
+            };
+
+            const setUnitOverride = (idx, unit) => {
+                setUnitOverrides(prev => ({
+                    ...prev,
+                    [idx]: unit
+                }));
             };
 
             const copyToClipboard = () => {
@@ -476,12 +802,164 @@
             return (
                 <div className="min-h-screen bg-gray-900 p-4">
                     <div className="max-w-6xl mx-auto">
+                        {/* Header with Navigation */}
                         <div className="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
-                            <h1 className="text-3xl font-bold text-green-400 mb-2">Smart Recipe Scaler</h1>
-                            <p className="text-gray-400">Paste ingredients, scale servings, get smart unit conversions</p>
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h1 className="text-3xl font-bold text-green-400 mb-2">Smart Recipe Scaler</h1>
+                                    <p className="text-gray-400">Scale recipes with intelligent unit conversions</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setCurrentPage('scaler')}
+                                        className={`px-6 py-2 rounded font-semibold ${
+                                            currentPage === 'scaler'
+                                                ? 'bg-green-600 text-white'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        Recipe Scaler
+                                    </button>
+                                    <button
+                                        onClick={() => setCurrentPage('settings')}
+                                        className={`px-6 py-2 rounded font-semibold ${
+                                            currentPage === 'settings'
+                                                ? 'bg-green-600 text-white'
+                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                        }`}
+                                    >
+                                        ⚙ Settings
+                                    </button>
+                                </div>
+                            </div>
                         </div>
 
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Settings Page */}
+                        {currentPage === 'settings' && (
+                            <div className="bg-gray-800 rounded-lg shadow-xl p-6">
+                                <h2 className="text-2xl font-bold text-green-400 mb-6">Settings</h2>
+                                
+                                {/* Custom Conversions Section */}
+                                <div className="mb-8">
+                                    <h3 className="text-xl font-bold text-green-400 mb-3">Custom Conversions</h3>
+                                    <p className="text-gray-400 mb-4">
+                                        Define your own conversions for ambiguous measurements. For example, if you typically use 
+                                        10 cloves per garlic bulb, or 1.5 cups per medium onion, add them here.
+                                    </p>
+                                    
+                                    <div className="bg-gray-700 p-6 rounded-lg mb-4">
+                                        <h4 className="font-semibold text-gray-200 mb-3">Add New Conversion</h4>
+                                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">From (Unit/Item)</label>
+                                                <input
+                                                    type="text"
+                                                    value={newConversionFrom}
+                                                    onChange={(e) => setNewConversionFrom(e.target.value)}
+                                                    placeholder="e.g., garlic bulb"
+                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">To (Unit/Item)</label>
+                                                <input
+                                                    type="text"
+                                                    value={newConversionTo}
+                                                    onChange={(e) => setNewConversionTo(e.target.value)}
+                                                    placeholder="e.g., cloves"
+                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">Ratio</label>
+                                                <input
+                                                    type="number"
+                                                    value={newConversionRatio}
+                                                    onChange={(e) => setNewConversionRatio(e.target.value)}
+                                                    placeholder="e.g., 10"
+                                                    step="0.1"
+                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm text-gray-400 mb-1">Note (Optional)</label>
+                                                <input
+                                                    type="text"
+                                                    value={newConversionNote}
+                                                    onChange={(e) => setNewConversionNote(e.target.value)}
+                                                    placeholder="e.g., Varies by size"
+                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                />
+                                            </div>
+                                            <div className="flex items-end">
+                                                <button
+                                                    onClick={addCustomConversion}
+                                                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-semibold"
+                                                >
+                                                    Add Conversion
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-2">
+                                            Example: 1 "garlic bulb" = 10 "cloves" means enter bulb → cloves with ratio 10
+                                        </p>
+                                    </div>
+                                    
+                                    {/* Existing Conversions */}
+                                    <div className="bg-gray-700 p-6 rounded-lg">
+                                        <h4 className="font-semibold text-gray-200 mb-3">Your Conversions</h4>
+                                        {Object.keys(customConversions).length > 0 ? (
+                                            <div className="space-y-2">
+                                                {Object.entries(customConversions).map(([key, value]) => (
+                                                    <div key={key} className="flex justify-between items-center bg-gray-600 p-4 rounded">
+                                                        <div>
+                                                            <div className="text-lg">
+                                                                1 <span className="text-green-400 font-semibold">{key}</span> = {value.ratio} <span className="text-green-400 font-semibold">{value.to}</span>
+                                                            </div>
+                                                            {value.note && (
+                                                                <div className="text-sm text-gray-400 italic mt-1">
+                                                                    {value.note}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                        <button
+                                                            onClick={() => deleteCustomConversion(key)}
+                                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        ) : (
+                                            <p className="text-gray-500 italic text-center py-8">
+                                                No custom conversions yet. Add one above to get started!
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                                
+                                {/* Common Examples Section */}
+                                <div className="bg-gray-700 p-6 rounded-lg">
+                                    <h4 className="font-semibold text-gray-200 mb-3">💡 Common Conversion Examples</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-300">
+                                        <div>• 1 garlic bulb = 10-12 cloves</div>
+                                        <div>• 1 medium onion = 1.5 cups chopped</div>
+                                        <div>• 1 large onion = 2 cups chopped</div>
+                                        <div>• 1 bunch parsley = 1 cup chopped</div>
+                                        <div>• 1 medium lemon = 3 tbsp juice</div>
+                                        <div>• 1 can tomatoes = 14.5 oz</div>
+                                        <div>• 1 bunch basil = 0.5 cup chopped</div>
+                                        <div>• 1 medium carrot = 0.5 cup chopped</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Recipe Scaler Page */}
+                        {currentPage === 'scaler' && (
+                            <>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {/* Input Section */}
                             <div className="bg-gray-800 rounded-lg shadow-xl p-6">
                                 <div className="flex justify-between items-center mb-4">
@@ -524,6 +1002,23 @@
                                         )}
                                     </div>
                                 )}
+
+                                <div className="flex justify-between items-center mb-2">
+                                    <label className="block text-sm text-gray-400">Paste ingredients here</label>
+                                    {inputText && (
+                                        <button
+                                            onClick={() => {
+                                                setInputText('');
+                                                setParsedIngredients([]);
+                                                setUnparsedLines([]);
+                                                setUnitOverrides({});
+                                            }}
+                                            className="px-3 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
+                                        >
+                                            Clear Input
+                                        </button>
+                                    )}
+                                </div>
 
                                 <textarea
                                     value={inputText}
@@ -620,30 +1115,77 @@
                                 ) : (
                                     <div className="space-y-2">
                                         {parsedIngredients.map((ingredient, idx) => {
-                                            const scaled = scaleIngredient(ingredient);
+                                            const scaled = scaleIngredient(ingredient, idx);
+                                            const unitOptions = getUnitOptions(ingredient);
+                                            const showWarning = isAmbiguous(ingredient);
                                             return (
                                                 <div key={idx} className="bg-gray-700 p-3 rounded">
-                                                    <div className="flex justify-between items-start">
-                                                        <div>
-                                                            <span className="text-green-400 font-bold">
-                                                                {formatNumber(scaled.value)} {scaled.unit}
-                                                            </span>
-                                                            <span className="text-gray-100 ml-2">
-                                                                {ingredient.ingredient}
-                                                            </span>
+                                                    <div className="flex justify-between items-start gap-3">
+                                                        <div className="flex-1">
+                                                            {ingredient.type === 'seasoning' ? (
+                                                                <>
+                                                                    <span className="text-gray-100">{ingredient.ingredient}</span>
+                                                                    <span className="text-gray-400 ml-2 italic text-sm">to taste</span>
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <span className="text-green-400 font-bold">
+                                                                        {formatNumber(scaled.value)} {scaled.unit}
+                                                                    </span>
+                                                                    <span className="text-gray-100 ml-2">
+                                                                        {ingredient.ingredient}
+                                                                    </span>
+                                                                </>
+                                                            )}
                                                             {ingredient.isRange && ingredient.rangeOriginal && (
                                                                 <span className="ml-2 text-xs text-yellow-400" title={`Original range: ${ingredient.rangeOriginal} ${ingredient.unit}`}>
                                                                     [from {ingredient.rangeOriginal} {ingredient.unit !== 'count' ? ingredient.unit : ''}]
                                                                 </span>
                                                             )}
+                                                            {showWarning && (
+                                                                <div className="mt-1 text-xs text-orange-400 flex items-center gap-1">
+                                                                    <span title={getAmbiguityWarning(ingredient)}>
+                                                                        ⚠️ {getAmbiguityWarning(ingredient)} - adjust to taste
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                            {ingredient.notes && (
+                                                                <span className="ml-2 text-xs text-gray-500">
+                                                                    {ingredient.notes}
+                                                                </span>
+                                                            )}
                                                         </div>
-                                                        <div className="text-xs text-gray-500">
-                                                            {ingredient.quantity} {ingredient.unit}
+                                                        <div className="flex items-center gap-2">
+                                                            {unitOptions.length > 0 && (
+                                                                <select
+                                                                    value={unitOverrides[idx] || 'auto'}
+                                                                    onChange={(e) => setUnitOverride(idx, e.target.value === 'auto' ? null : e.target.value)}
+                                                                    className="bg-gray-600 text-gray-100 px-2 py-1 rounded border border-gray-500 focus:border-green-400 focus:outline-none text-xs"
+                                                                    title="Change unit"
+                                                                >
+                                                                    <option value="auto">Auto</option>
+                                                                    {unitOptions.map(unit => (
+                                                                        <option key={unit} value={unit}>{unit}</option>
+                                                                    ))}
+                                                                </select>
+                                                            )}
+                                                            <div className="text-xs text-gray-500 whitespace-nowrap">
+                                                                {ingredient.type !== 'seasoning' && `${ingredient.quantity} ${ingredient.unit}`}
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
                                             );
                                         })}
+                                        
+                                        {unparsedLines.length > 0 && (
+                                            <div className="mt-4 p-3 bg-red-900/30 border border-red-700 rounded">
+                                                <div className="text-red-400 font-bold mb-2">⚠ Couldn't parse these lines:</div>
+                                                {unparsedLines.map((line, idx) => (
+                                                    <div key={idx} className="text-red-300 text-sm font-mono">• {line}</div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 
@@ -667,6 +1209,8 @@
                                 <li>Mixed fractions: "2 1/2 cups" works perfectly</li>
                             </ul>
                         </div>
+                        </>
+                        )}
                     </div>
                 </div>
             );
