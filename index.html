@@ -104,8 +104,13 @@
             // Normalize dashes - convert en dash (–) and em dash (—) to regular hyphen (-)
             line = line.replace(/[–—]/g, '-');
             
-            // Ignore header lines
-            if (line.match(/^(ingredients|directions|instructions|serves|servings|yield)/i)) {
+            // Ignore header lines (all caps or common recipe section headers)
+            if (line.match(/^(ingredients|directions|instructions|serves|servings|yield|method|preparation|notes?|tips?)/i)) {
+                return null;
+            }
+            
+            // Ignore all-caps lines (likely section headers)
+            if (line === line.toUpperCase() && line.length > 3 && /[A-Z]/.test(line)) {
                 return null;
             }
             
@@ -138,8 +143,12 @@
             }
             
             // Try to match: quantity unit ingredient
-            // Supports: "2 cups flour", "1/2 cup sugar", "2 1/2 cups water", "2-1/2 cups" (mixed fraction), "1.5 tsp salt", "2-3 cups water", "3 eggs"
+            // Supports: "2 cups flour", "1/2 cup sugar", "2 1/2 cups water", "2-1/2 cups" (mixed fraction), "1.5 tsp salt", "2.25 cups milk", "2-3 cups water", "3 eggs"
             const patterns = [
+                // Decimal with unit: "2.25 cups" or "10.5 tablespoons"
+                /^(\d+\.\d+)\s+([a-zA-Z]+)\s+(.+)$/,
+                // Decimal range with unit: "1.5-3 teaspoons"
+                /^(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Mixed fraction with unit: "2 1/2 cups"
                 /^(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Ambiguous: could be range or mixed fraction: "2-1/2 cups" or "1-2 cups"
@@ -175,8 +184,24 @@
                 if (match) {
                     let quantity, unit, ingredient, isRange = false, rangeOriginal = null;
                     
-                    // Handle mixed fractions with unit: "2 1/2 cups flour"
+                    // Handle decimal with unit: "2.25 cups milk"
                     if (pattern === patterns[0]) {
+                        quantity = parseFloat(match[1]);
+                        unit = match[2].toLowerCase();
+                        ingredient = match[3];
+                    }
+                    // Handle decimal range with unit: "1.5-3 teaspoons"
+                    else if (pattern === patterns[1]) {
+                        const q1 = parseFloat(match[1]);
+                        const q2 = parseFloat(match[2]);
+                        isRange = true;
+                        rangeOriginal = `${match[1]}-${match[2]}`;
+                        quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
+                        unit = match[3].toLowerCase();
+                        ingredient = match[4];
+                    }
+                    // Handle mixed fractions with unit: "2 1/2 cups flour"
+                    else if (pattern === patterns[2]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -184,7 +209,7 @@
                         ingredient = match[4];
                     }
                     // Handle ambiguous "2-1/2" format with unit - could be range or mixed fraction
-                    else if (pattern === patterns[1]) {
+                    else if (pattern === patterns[3]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -205,17 +230,17 @@
                         }
                     }
                     // Handle mixed fraction ranges with unit
-                    else if (pattern === patterns[2] || pattern === patterns[3] || pattern === patterns[4]) {
+                    else if (pattern === patterns[4] || pattern === patterns[5] || pattern === patterns[6]) {
                         isRange = true;
                         let q1, q2;
-                        if (pattern === patterns[2]) {
+                        if (pattern === patterns[4]) {
                             // "1 1/2-2 1/2 cups"
                             q1 = parseInt(match[1]) + parseQuantity(match[2]);
                             q2 = parseInt(match[3]) + parseQuantity(match[4]);
                             rangeOriginal = `${match[1]} ${match[2]}-${match[3]} ${match[4]}`;
                             unit = match[5].toLowerCase();
                             ingredient = match[6];
-                        } else if (pattern === patterns[3]) {
+                        } else if (pattern === patterns[5]) {
                             // "2-2 1/2 cups"
                             q1 = parseInt(match[1]);
                             q2 = parseInt(match[2]) + parseQuantity(match[3]);
@@ -233,13 +258,13 @@
                         quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
                     }
                     // Standalone fraction with unit: "1/4 cup honey"
-                    else if (pattern === patterns[5]) {
+                    else if (pattern === patterns[7]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Fraction/decimal range: "1/2-3/4 cups"
-                    else if (pattern === patterns[6]) {
+                    else if (pattern === patterns[8]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -249,7 +274,7 @@
                         ingredient = match[4];
                     }
                     // Mixed fraction count: "2 1/2 eggs"
-                    else if (pattern === patterns[9]) {
+                    else if (pattern === patterns[11]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -271,7 +296,7 @@
                         };
                     }
                     // Standalone fraction count: "1/2 onion"
-                    else if (pattern === patterns[10]) {
+                    else if (pattern === patterns[12]) {
                         quantity = parseQuantity(match[1]);
                         ingredient = match[2];
                         
@@ -298,7 +323,7 @@
                         };
                     }
                     // Handle ambiguous "2-1/2" format for count - could be range or mixed fraction
-                    else if (pattern === patterns[11]) {
+                    else if (pattern === patterns[13]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -332,7 +357,7 @@
                         };
                     }
                     // Fraction/decimal range for count
-                    else if (pattern === patterns[12]) {
+                    else if (pattern === patterns[14]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -356,7 +381,7 @@
                         };
                     }
                     // Unicode fraction count: "½ onion"
-                    else if (pattern === patterns[13]) {
+                    else if (pattern === patterns[15]) {
                         quantity = parseUnicodeFraction(match[1]);
                         ingredient = match[2];
                         
@@ -376,7 +401,7 @@
                         };
                     }
                     // Simple count: "4 chicken thighs" - LAST RESORT (most general)
-                    else if (pattern === patterns[14]) {
+                    else if (pattern === patterns[16]) {
                         quantity = parseInt(match[1]);
                         ingredient = match[2];
                         
@@ -404,13 +429,13 @@
                         };
                     }
                     // Simple unit-based
-                    else if (pattern === patterns[7]) {
+                    else if (pattern === patterns[9]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Unicode fraction with unit
-                    else if (pattern === patterns[8]) {
+                    else if (pattern === patterns[10]) {
                         quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
@@ -510,6 +535,9 @@
             const [newConversionTo, setNewConversionTo] = useState('');
             const [newConversionRatio, setNewConversionRatio] = useState('');
             const [newConversionNote, setNewConversionNote] = useState('');
+            const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+            const [editingKey, setEditingKey] = useState(null);
+            const [editValues, setEditValues] = useState({ to: '', ratio: '', note: '' });
 
             // Common ambiguous items that should show warnings
             const AMBIGUOUS_ITEMS = {
@@ -583,26 +611,71 @@
                 if (conversions) {
                     setCustomConversions(JSON.parse(conversions));
                 } else {
-                    // Set default conversions on first load
+                    // Set common default conversions on first load
                     const defaultConversions = {
-                        'garlic bulb': { to: 'cloves', ratio: 12, note: 'Varies by size' },
-                        'garlic head': { to: 'cloves', ratio: 12, note: 'Varies by size' },
-                        'medium onion': { to: 'cups chopped', ratio: 1.5, note: 'Standard medium size' },
-                        'large onion': { to: 'cups chopped', ratio: 2, note: 'Standard large size' },
-                        'small onion': { to: 'cups chopped', ratio: 0.75, note: 'Standard small size' },
-                        'bunch parsley': { to: 'cup chopped', ratio: 1, note: 'Fresh herbs' },
-                        'bunch cilantro': { to: 'cup chopped', ratio: 1, note: 'Fresh herbs' },
-                        'bunch basil': { to: 'cup chopped', ratio: 0.5, note: 'Fresh herbs' },
-                        'medium lemon': { to: 'tbsp juice', ratio: 3, note: 'Fresh lemon' },
-                        'medium lime': { to: 'tbsp juice', ratio: 2, note: 'Fresh lime' },
-                        'can tomatoes': { to: 'oz', ratio: 14.5, note: 'Standard can size' },
-                        'medium carrot': { to: 'cup chopped', ratio: 0.5, note: 'Diced' },
-                        'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard stick' },
-                        'pinch': { to: 'tsp', ratio: 0.0625, note: '~1/16 tsp' },
+                        // Imprecise Measurements
+                        'pinch': { to: 'tsp', ratio: 0.0625, note: '~1/16 tsp, thumb + forefinger' },
                         'dash': { to: 'tsp', ratio: 0.125, note: '~1/8 tsp' },
-                        'handful': { to: 'cup', ratio: 0.5, note: 'Approximate, varies by hand' },
-                        'knob ginger': { to: 'tbsp grated', ratio: 1.5, note: 'Thumb-sized piece' },
-                        'sprig': { to: 'tsp chopped', ratio: 1, note: 'Fresh herbs like thyme, rosemary' },
+                        'smidgen': { to: 'tsp', ratio: 0.03125, note: '~1/32 tsp, half a pinch' },
+                        'drop': { to: 'ml', ratio: 0.05, note: 'Literal droplet' },
+                        'hint': { to: 'tsp', ratio: 0.04, note: '~1/32-1/16 tsp, very small' },
+                        'sprinkle': { to: 'tsp', ratio: 0.5, note: '1 pinch to 1 tsp, varies' },
+                        'dusting': { to: 'tsp', ratio: 1.5, note: 'Thin layer, 1-2 tsp' },
+                        'drizzle': { to: 'tsp', ratio: 1.5, note: 'Thin liquid stream' },
+                        'splash': { to: 'tsp', ratio: 1.5, note: 'Liquids like vinegar or wine' },
+                        'glug': { to: 'tbsp', ratio: 1.5, note: 'Sound-based, usually olive oil' },
+                        'handful': { to: 'cup', ratio: 0.5, note: "1/4 to 1 cup, depends on hand" },
+                        
+                        // Modified Measurements
+                        'heaping teaspoon': { to: 'tsp', ratio: 1.15, note: '10-20% over level' },
+                        'heaping tablespoon': { to: 'tbsp', ratio: 1.15, note: '10-20% over level' },
+                        'rounded tablespoon': { to: 'tbsp', ratio: 1.25, note: 'Similar to heaping' },
+                        'scant teaspoon': { to: 'tsp', ratio: 0.85, note: '10-20% under level' },
+                        'scant tablespoon': { to: 'tbsp', ratio: 0.85, note: '10-20% under level' },
+                        'scant cup': { to: 'fl oz', ratio: 7.5, note: 'Just under 8 oz' },
+                        
+                        // Garlic
+                        'garlic clove': { to: 'g', ratio: 5, note: '3-7g each, varies by size' },
+                        'garlic bulb': { to: 'cloves', ratio: 12, note: '10-15 cloves typical' },
+                        'garlic head': { to: 'cloves', ratio: 12, note: 'Same as bulb' },
+                        
+                        // Ginger
+                        'knob of ginger': { to: 'tbsp grated', ratio: 1.5, note: 'Thumb-sized piece (10-20g)' },
+                        'knob ginger': { to: 'tbsp grated', ratio: 1.5, note: 'Thumb-sized piece (10-20g)' },
+                        
+                        // Herbs
+                        'sprig': { to: 'tsp chopped', ratio: 1, note: '2-4 in long (thyme, rosemary)' },
+                        'bunch parsley': { to: 'oz', ratio: 1.5, note: '1-2 oz (30-60g), very inconsistent' },
+                        'bunch cilantro': { to: 'oz', ratio: 1.5, note: '1-2 oz (30-60g), very inconsistent' },
+                        'bunch basil': { to: 'oz', ratio: 1.5, note: '1-2 oz (30-60g), very inconsistent' },
+                        'basil leaf': { to: 'g', ratio: 0.75, note: '0.5-1g each' },
+                        'mint leaf': { to: 'g', ratio: 0.75, note: '0.5-1g each' },
+                        
+                        // Butter
+                        'stick of butter': { to: 'cup', ratio: 0.5, note: 'U.S. standard (113g)' },
+                        'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard (113g)' },
+                        'cube of butter': { to: 'tbsp', ratio: 1, note: 'Often 1 tbsp piece (14g)' },
+                        
+                        // Meat Cuts
+                        'rasher': { to: 'slice', ratio: 1, note: 'Common in UK/Canada for bacon' },
+                        
+                        // Common Vegetables
+                        'small onion': { to: 'cup chopped', ratio: 0.75, note: 'Diced' },
+                        'medium onion': { to: 'cup chopped', ratio: 1.5, note: 'Diced' },
+                        'large onion': { to: 'cup chopped', ratio: 2, note: 'Diced' },
+                        'small carrot': { to: 'cup chopped', ratio: 0.33, note: 'Diced' },
+                        'medium carrot': { to: 'cup chopped', ratio: 0.5, note: 'Diced' },
+                        'large carrot': { to: 'cup chopped', ratio: 0.75, note: 'Diced' },
+                        
+                        // Citrus
+                        'small lemon': { to: 'tbsp juice', ratio: 2, note: 'Fresh lemon' },
+                        'medium lemon': { to: 'tbsp juice', ratio: 3, note: 'Fresh lemon' },
+                        'large lemon': { to: 'tbsp juice', ratio: 4, note: 'Fresh lemon' },
+                        'medium lime': { to: 'tbsp juice', ratio: 2, note: 'Fresh lime' },
+                        
+                        // Containers
+                        'can tomatoes': { to: 'oz', ratio: 14.5, note: 'Standard can size' },
+                        'small can': { to: 'oz', ratio: 8, note: 'Typical small can' },
                     };
                     setCustomConversions(defaultConversions);
                     localStorage.setItem('customConversions', JSON.stringify(defaultConversions));
@@ -646,6 +719,29 @@
                 localStorage.setItem('customConversions', JSON.stringify(updated));
             };
 
+            const startEditing = (key, value) => {
+                setEditingKey(key);
+                setEditValues({ to: value.to, ratio: value.ratio, note: value.note || '' });
+            };
+
+            const saveEdit = (oldKey) => {
+                const updated = { ...customConversions };
+                delete updated[oldKey];
+                updated[oldKey] = {
+                    to: editValues.to,
+                    ratio: parseFloat(editValues.ratio),
+                    note: editValues.note
+                };
+                setCustomConversions(updated);
+                localStorage.setItem('customConversions', JSON.stringify(updated));
+                setEditingKey(null);
+            };
+
+            const cancelEdit = () => {
+                setEditingKey(null);
+                setEditValues({ to: '', ratio: '', note: '' });
+            };
+
             const isAmbiguous = (ingredient) => {
                 const lowerIngredient = ingredient.ingredient.toLowerCase();
                 return Object.keys(AMBIGUOUS_ITEMS).some(item => lowerIngredient.includes(item));
@@ -657,11 +753,20 @@
                 // Find matching ambiguous term
                 for (const [term, info] of Object.entries(AMBIGUOUS_ITEMS)) {
                     if (lower.includes(term)) {
-                        return `${info.note} (~${info.measurement})`;
+                        // Check if user has defined this conversion
+                        const hasConversion = Object.keys(customConversions).some(key => 
+                            lower.includes(key.toLowerCase())
+                        );
+                        
+                        if (hasConversion) {
+                            return `${info.note} (~${info.measurement})`;
+                        } else {
+                            return `${info.note} - Define in Settings to convert`;
+                        }
                     }
                 }
                 
-                return 'Measurement may vary';
+                return 'Measurement may vary - Define in Settings';
             };
 
             const parseInput = () => {
@@ -803,13 +908,15 @@
                 <div className="min-h-screen bg-gray-900 p-4">
                     <div className="max-w-6xl mx-auto">
                         {/* Header with Navigation */}
-                        <div className="bg-gray-800 rounded-lg shadow-xl p-6 mb-6">
+                        <div className="bg-gray-800 rounded-lg shadow-xl p-4 md:p-6 mb-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <h1 className="text-3xl font-bold text-green-400 mb-2">Smart Recipe Scaler</h1>
-                                    <p className="text-gray-400">Scale recipes with intelligent unit conversions</p>
+                                    <h1 className="text-2xl md:text-3xl font-bold text-green-400 mb-1 md:mb-2">Smart Recipe Scaler</h1>
+                                    <p className="text-sm md:text-base text-gray-400 hidden sm:block">Scale recipes with intelligent unit conversions</p>
                                 </div>
-                                <div className="flex gap-2">
+                                
+                                {/* Desktop Navigation */}
+                                <div className="hidden md:flex gap-2">
                                     <button
                                         onClick={() => setCurrentPage('scaler')}
                                         className={`px-6 py-2 rounded font-semibold ${
@@ -831,7 +938,53 @@
                                         ⚙ Settings
                                     </button>
                                 </div>
+                                
+                                {/* Mobile Hamburger Menu */}
+                                <button
+                                    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                                    className="md:hidden p-2 rounded bg-gray-700 hover:bg-gray-600"
+                                >
+                                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        {mobileMenuOpen ? (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                        ) : (
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                                        )}
+                                    </svg>
+                                </button>
                             </div>
+                            
+                            {/* Mobile Menu Dropdown */}
+                            {mobileMenuOpen && (
+                                <div className="md:hidden mt-4 flex flex-col gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setCurrentPage('scaler');
+                                            setMobileMenuOpen(false);
+                                        }}
+                                        className={`px-4 py-3 rounded font-semibold text-left ${
+                                            currentPage === 'scaler'
+                                                ? 'bg-green-600 text-white'
+                                                : 'bg-gray-700 text-gray-300'
+                                        }`}
+                                    >
+                                        📊 Recipe Scaler
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setCurrentPage('settings');
+                                            setMobileMenuOpen(false);
+                                        }}
+                                        className={`px-4 py-3 rounded font-semibold text-left ${
+                                            currentPage === 'settings'
+                                                ? 'bg-green-600 text-white'
+                                                : 'bg-gray-700 text-gray-300'
+                                        }`}
+                                    >
+                                        ⚙ Settings
+                                    </button>
+                                </div>
+                            )}
                         </div>
 
                         {/* Settings Page */}
@@ -907,33 +1060,164 @@
                                     
                                     {/* Existing Conversions */}
                                     <div className="bg-gray-700 p-6 rounded-lg">
-                                        <h4 className="font-semibold text-gray-200 mb-3">Your Conversions</h4>
+                                        <div className="flex justify-between items-center mb-3">
+                                            <h4 className="font-semibold text-gray-200">Your Conversions</h4>
+                                            <button
+                                                onClick={() => {
+                                                    if (confirm('Load default conversions? This will add common measurements (existing conversions will be kept).')) {
+                                                        const defaultConversions = {
+                                                            // Imprecise Measurements
+                                                            'pinch': { to: 'tsp', ratio: 0.0625, note: '~1/16 tsp, thumb + forefinger' },
+                                                            'dash': { to: 'tsp', ratio: 0.125, note: '~1/8 tsp' },
+                                                            'smidgen': { to: 'tsp', ratio: 0.03125, note: '~1/32 tsp, half a pinch' },
+                                                            'drop': { to: 'ml', ratio: 0.05, note: 'Literal droplet' },
+                                                            'hint': { to: 'tsp', ratio: 0.04, note: '~1/32-1/16 tsp, very small' },
+                                                            'sprinkle': { to: 'tsp', ratio: 0.5, note: '1 pinch to 1 tsp, varies' },
+                                                            'dusting': { to: 'tsp', ratio: 1.5, note: 'Thin layer, 1-2 tsp' },
+                                                            'drizzle': { to: 'tsp', ratio: 1.5, note: 'Thin liquid stream' },
+                                                            'splash': { to: 'tsp', ratio: 1.5, note: 'Liquids like vinegar or wine' },
+                                                            'glug': { to: 'tbsp', ratio: 1.5, note: 'Sound-based, usually olive oil' },
+                                                            'handful': { to: 'cup', ratio: 0.5, note: "1/4 to 1 cup, depends on hand" },
+                                                            'heaping teaspoon': { to: 'tsp', ratio: 1.15, note: '10-20% over level' },
+                                                            'heaping tablespoon': { to: 'tbsp', ratio: 1.15, note: '10-20% over level' },
+                                                            'rounded tablespoon': { to: 'tbsp', ratio: 1.25, note: 'Similar to heaping' },
+                                                            'scant teaspoon': { to: 'tsp', ratio: 0.85, note: '10-20% under level' },
+                                                            'scant tablespoon': { to: 'tbsp', ratio: 0.85, note: '10-20% under level' },
+                                                            'scant cup': { to: 'fl oz', ratio: 7.5, note: 'Just under 8 oz' },
+                                                            'garlic clove': { to: 'g', ratio: 5, note: '3-7g each, varies by size' },
+                                                            'garlic bulb': { to: 'cloves', ratio: 12, note: '10-15 cloves typical' },
+                                                            'garlic head': { to: 'cloves', ratio: 12, note: 'Same as bulb' },
+                                                            'knob of ginger': { to: 'tbsp grated', ratio: 1.5, note: 'Thumb-sized piece (10-20g)' },
+                                                            'knob ginger': { to: 'tbsp grated', ratio: 1.5, note: 'Thumb-sized piece (10-20g)' },
+                                                            'sprig': { to: 'tsp chopped', ratio: 1, note: '2-4 in long (thyme, rosemary)' },
+                                                            'bunch parsley': { to: 'oz', ratio: 1.5, note: '1-2 oz (30-60g), very inconsistent' },
+                                                            'bunch cilantro': { to: 'oz', ratio: 1.5, note: '1-2 oz (30-60g), very inconsistent' },
+                                                            'bunch basil': { to: 'oz', ratio: 1.5, note: '1-2 oz (30-60g), very inconsistent' },
+                                                            'basil leaf': { to: 'g', ratio: 0.75, note: '0.5-1g each' },
+                                                            'mint leaf': { to: 'g', ratio: 0.75, note: '0.5-1g each' },
+                                                            'stick of butter': { to: 'cup', ratio: 0.5, note: 'U.S. standard (113g)' },
+                                                            'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard (113g)' },
+                                                            'cube of butter': { to: 'tbsp', ratio: 1, note: 'Often 1 tbsp piece (14g)' },
+                                                            'rasher': { to: 'slice', ratio: 1, note: 'Common in UK/Canada for bacon' },
+                                                            'small onion': { to: 'cup chopped', ratio: 0.75, note: 'Diced' },
+                                                            'medium onion': { to: 'cup chopped', ratio: 1.5, note: 'Diced' },
+                                                            'large onion': { to: 'cup chopped', ratio: 2, note: 'Diced' },
+                                                            'small carrot': { to: 'cup chopped', ratio: 0.33, note: 'Diced' },
+                                                            'medium carrot': { to: 'cup chopped', ratio: 0.5, note: 'Diced' },
+                                                            'large carrot': { to: 'cup chopped', ratio: 0.75, note: 'Diced' },
+                                                            'small lemon': { to: 'tbsp juice', ratio: 2, note: 'Fresh lemon' },
+                                                            'medium lemon': { to: 'tbsp juice', ratio: 3, note: 'Fresh lemon' },
+                                                            'large lemon': { to: 'tbsp juice', ratio: 4, note: 'Fresh lemon' },
+                                                            'medium lime': { to: 'tbsp juice', ratio: 2, note: 'Fresh lime' },
+                                                            'can tomatoes': { to: 'oz', ratio: 14.5, note: 'Standard can size' },
+                                                            'small can': { to: 'oz', ratio: 8, note: 'Typical small can' },
+                                                        };
+                                                        const merged = { ...customConversions, ...defaultConversions };
+                                                        setCustomConversions(merged);
+                                                        localStorage.setItem('customConversions', JSON.stringify(merged));
+                                                    }
+                                                }}
+                                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                                            >
+                                                Load Defaults
+                                            </button>
+                                        </div>
                                         {Object.keys(customConversions).length > 0 ? (
-                                            <div className="space-y-2">
-                                                {Object.entries(customConversions).map(([key, value]) => (
-                                                    <div key={key} className="flex justify-between items-center bg-gray-600 p-4 rounded">
-                                                        <div>
-                                                            <div className="text-lg">
-                                                                1 <span className="text-green-400 font-semibold">{key}</span> = {value.ratio} <span className="text-green-400 font-semibold">{value.to}</span>
-                                                            </div>
-                                                            {value.note && (
-                                                                <div className="text-sm text-gray-400 italic mt-1">
-                                                                    {value.note}
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <button
-                                                            onClick={() => deleteCustomConversion(key)}
-                                                            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded"
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </div>
-                                                ))}
+                                            <div className="overflow-x-auto">
+                                                <table className="w-full text-sm">
+                                                    <thead>
+                                                        <tr className="border-b border-gray-500">
+                                                            <th className="text-left p-2 text-gray-400">From</th>
+                                                            <th className="text-left p-2 text-gray-400">Ratio</th>
+                                                            <th className="text-left p-2 text-gray-400">To</th>
+                                                            <th className="text-left p-2 text-gray-400">Note</th>
+                                                            <th className="text-right p-2 text-gray-400">Actions</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {Object.entries(customConversions).map(([key, value]) => (
+                                                            <tr key={key} className="border-b border-gray-600 hover:bg-gray-600">
+                                                                {editingKey === key ? (
+                                                                    <>
+                                                                        <td className="p-2">
+                                                                            <span className="text-green-400 font-semibold">{key}</span>
+                                                                        </td>
+                                                                        <td className="p-2">
+                                                                            <input
+                                                                                type="number"
+                                                                                value={editValues.ratio}
+                                                                                onChange={(e) => setEditValues({...editValues, ratio: e.target.value})}
+                                                                                className="w-20 bg-gray-800 text-gray-100 p-1 rounded border border-gray-500 text-sm"
+                                                                                step="0.01"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="p-2">
+                                                                            <input
+                                                                                type="text"
+                                                                                value={editValues.to}
+                                                                                onChange={(e) => setEditValues({...editValues, to: e.target.value})}
+                                                                                className="w-full bg-gray-800 text-gray-100 p-1 rounded border border-gray-500 text-sm"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="p-2">
+                                                                            <input
+                                                                                type="text"
+                                                                                value={editValues.note}
+                                                                                onChange={(e) => setEditValues({...editValues, note: e.target.value})}
+                                                                                className="w-full bg-gray-800 text-gray-100 p-1 rounded border border-gray-500 text-sm"
+                                                                            />
+                                                                        </td>
+                                                                        <td className="p-2 text-right">
+                                                                            <button
+                                                                                onClick={() => saveEdit(key)}
+                                                                                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs mr-1"
+                                                                            >
+                                                                                Save
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={cancelEdit}
+                                                                                className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs"
+                                                                            >
+                                                                                Cancel
+                                                                            </button>
+                                                                        </td>
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <td className="p-2">
+                                                                            <span className="text-green-400 font-semibold">{key}</span>
+                                                                        </td>
+                                                                        <td className="p-2">{value.ratio}</td>
+                                                                        <td className="p-2">
+                                                                            <span className="text-green-400 font-semibold">{value.to}</span>
+                                                                        </td>
+                                                                        <td className="p-2 text-gray-400 text-xs">{value.note}</td>
+                                                                        <td className="p-2 text-right whitespace-nowrap">
+                                                                            <button
+                                                                                onClick={() => startEditing(key, value)}
+                                                                                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs mr-1"
+                                                                            >
+                                                                                Edit
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => deleteCustomConversion(key)}
+                                                                                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                                                                            >
+                                                                                Del
+                                                                            </button>
+                                                                        </td>
+                                                                    </>
+                                                                )}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
                                             </div>
                                         ) : (
                                             <p className="text-gray-500 italic text-center py-8">
-                                                No custom conversions yet. Add one above to get started!
+                                                No custom conversions yet. Add conversions above to handle ambiguous measurements like "1 garlic bulb", "1 pinch salt", or "1 medium onion".
+                                                <br/><br/>
+                                                When you paste recipes with these terms, the app will warn you they're ambiguous and prompt you to define them here.
                                             </p>
                                         )}
                                     </div>
