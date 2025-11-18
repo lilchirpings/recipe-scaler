@@ -149,6 +149,8 @@
                 /^(\d+\.\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Decimal range with unit: "1.5-3 teaspoons"
                 /^(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s+([a-zA-Z]+)\s+(.+)$/,
+                // Whole number + unicode fraction with unit: "1½ cups"
+                /^(\d+)([½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,
                 // Mixed fraction with unit: "2 1/2 cups"
                 /^(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Ambiguous: could be range or mixed fraction: "2-1/2 cups" or "1-2 cups"
@@ -200,8 +202,16 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Handle mixed fractions with unit: "2 1/2 cups flour"
+                    // Handle whole number + unicode fraction with unit: "1½ lbs"
                     else if (pattern === patterns[2]) {
+                        const whole = parseInt(match[1]);
+                        const frac = parseUnicodeFraction(match[2]);
+                        quantity = whole + frac;
+                        unit = match[3].toLowerCase();
+                        ingredient = match[4];
+                    }
+                    // Handle mixed fractions with unit: "2 1/2 cups flour"
+                    else if (pattern === patterns[3]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -209,7 +219,7 @@
                         ingredient = match[4];
                     }
                     // Handle ambiguous "2-1/2" format with unit - could be range or mixed fraction
-                    else if (pattern === patterns[3]) {
+                    else if (pattern === patterns[4]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -230,17 +240,17 @@
                         }
                     }
                     // Handle mixed fraction ranges with unit
-                    else if (pattern === patterns[4] || pattern === patterns[5] || pattern === patterns[6]) {
+                    else if (pattern === patterns[5] || pattern === patterns[6] || pattern === patterns[7]) {
                         isRange = true;
                         let q1, q2;
-                        if (pattern === patterns[4]) {
+                        if (pattern === patterns[5]) {
                             // "1 1/2-2 1/2 cups"
                             q1 = parseInt(match[1]) + parseQuantity(match[2]);
                             q2 = parseInt(match[3]) + parseQuantity(match[4]);
                             rangeOriginal = `${match[1]} ${match[2]}-${match[3]} ${match[4]}`;
                             unit = match[5].toLowerCase();
                             ingredient = match[6];
-                        } else if (pattern === patterns[5]) {
+                        } else if (pattern === patterns[6]) {
                             // "2-2 1/2 cups"
                             q1 = parseInt(match[1]);
                             q2 = parseInt(match[2]) + parseQuantity(match[3]);
@@ -258,13 +268,13 @@
                         quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
                     }
                     // Standalone fraction with unit: "1/4 cup honey"
-                    else if (pattern === patterns[7]) {
+                    else if (pattern === patterns[8]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Fraction/decimal range: "1/2-3/4 cups"
-                    else if (pattern === patterns[8]) {
+                    else if (pattern === patterns[9]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -274,7 +284,7 @@
                         ingredient = match[4];
                     }
                     // Mixed fraction count: "2 1/2 eggs"
-                    else if (pattern === patterns[11]) {
+                    else if (pattern === patterns[12]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -296,7 +306,7 @@
                         };
                     }
                     // Standalone fraction count: "1/2 onion"
-                    else if (pattern === patterns[12]) {
+                    else if (pattern === patterns[13]) {
                         quantity = parseQuantity(match[1]);
                         ingredient = match[2];
                         
@@ -323,7 +333,7 @@
                         };
                     }
                     // Handle ambiguous "2-1/2" format for count - could be range or mixed fraction
-                    else if (pattern === patterns[13]) {
+                    else if (pattern === patterns[14]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -357,7 +367,7 @@
                         };
                     }
                     // Fraction/decimal range for count
-                    else if (pattern === patterns[14]) {
+                    else if (pattern === patterns[15]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -381,7 +391,7 @@
                         };
                     }
                     // Unicode fraction count: "½ onion"
-                    else if (pattern === patterns[15]) {
+                    else if (pattern === patterns[16]) {
                         quantity = parseUnicodeFraction(match[1]);
                         ingredient = match[2];
                         
@@ -401,7 +411,7 @@
                         };
                     }
                     // Simple count: "4 chicken thighs" - LAST RESORT (most general)
-                    else if (pattern === patterns[16]) {
+                    else if (pattern === patterns[17]) {
                         quantity = parseInt(match[1]);
                         ingredient = match[2];
                         
@@ -429,13 +439,13 @@
                         };
                     }
                     // Simple unit-based
-                    else if (pattern === patterns[9]) {
+                    else if (pattern === patterns[10]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Unicode fraction with unit
-                    else if (pattern === patterns[10]) {
+                    else if (pattern === patterns[11]) {
                         quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
@@ -516,9 +526,47 @@
             return num.toFixed(2).replace(/\.?0+$/, '');
         };
 
+        const pluralize = (num, unit) => {
+            // Round to check if singular or plural
+            const roundedNum = Math.round(num * 100) / 100;
+            
+            // If exactly 1, use singular
+            if (roundedNum === 1) return unit;
+            
+            // Common pluralization rules
+            const lowerUnit = unit.toLowerCase();
+            
+            // Already plural
+            if (lowerUnit.endsWith('s') || lowerUnit.endsWith('es')) return unit;
+            
+            // Special cases
+            const specialPlurals = {
+                'leaf': 'leaves',
+                'clove': 'cloves',
+                'bulb': 'bulbs',
+                'pinch': 'pinches',
+                'dash': 'dashes',
+                'inch': 'inches',
+                'bunch': 'bunches',
+                'sprig': 'sprigs',
+                'stick': 'sticks',
+                'cube': 'cubes',
+                'rasher': 'rashers',
+                'slice': 'slices',
+                'piece': 'pieces',
+            };
+            
+            if (specialPlurals[lowerUnit]) {
+                return specialPlurals[lowerUnit];
+            }
+            
+            // Default: add 's'
+            return unit + 's';
+        };
+
         function RecipeScaler() {
             const [inputText, setInputText] = useState('');
-            const [originalServings, setOriginalServings] = useState(1);
+            const [originalServings, setOriginalServings] = useState(4);
             const [targetServings, setTargetServings] = useState(8);
             const [useMetric, setUseMetric] = useState(false);
             const [parsedIngredients, setParsedIngredients] = useState([]);
@@ -635,9 +683,10 @@
                         'scant cup': { to: 'fl oz', ratio: 7.5, note: 'Just under 8 oz' },
                         
                         // Garlic
-                        'garlic clove': { to: 'g', ratio: 5, note: '3-7g each, varies by size' },
+                        'garlic clove': { to: 'garlic bulbs', ratio: 0.0833, note: '12 cloves per bulb' },
                         'garlic bulb': { to: 'cloves', ratio: 12, note: '10-15 cloves typical' },
                         'garlic head': { to: 'cloves', ratio: 12, note: 'Same as bulb' },
+                        'clove': { to: 'garlic bulbs', ratio: 0.0833, note: '12 cloves per bulb' },
                         
                         // Ginger
                         'knob of ginger': { to: 'tbsp grated', ratio: 1.5, note: 'Thumb-sized piece (10-20g)' },
@@ -796,6 +845,51 @@
                 }
                 
                 const scaleFactor = targetServings / originalServings;
+                const scaledQuantity = ingredient.quantity * scaleFactor;
+                
+                // Check if this ingredient matches a custom conversion
+                const lowerIngredient = ingredient.ingredient.toLowerCase();
+                const lowerUnit = ingredient.unit.toLowerCase();
+                
+                // Try to find a matching conversion
+                let matchedConversion = null;
+                let bestMatchLength = 0;
+                
+                for (const [key, conversion] of Object.entries(customConversions)) {
+                    const lowerKey = key.toLowerCase();
+                    
+                    // Build possible match strings
+                    const unitIngredient = `${lowerUnit} ${lowerIngredient}`;
+                    const ingredientUnit = `${lowerIngredient} ${lowerUnit}`;
+                    
+                    // Check various matching possibilities (prefer longer/more specific matches)
+                    if (unitIngredient.includes(lowerKey) || 
+                        ingredientUnit.includes(lowerKey) ||
+                        lowerIngredient.includes(lowerKey) ||
+                        lowerUnit === lowerKey) {
+                        // Prefer longer matches (more specific)
+                        if (lowerKey.length > bestMatchLength) {
+                            matchedConversion = { key, ...conversion };
+                            bestMatchLength = lowerKey.length;
+                        }
+                    }
+                }
+                
+                // If we found a conversion, use it
+                if (matchedConversion) {
+                    const convertedValue = scaledQuantity * matchedConversion.ratio;
+                    
+                    // Return in the converted unit with original value for reference
+                    return { 
+                        value: convertedValue, 
+                        unit: matchedConversion.to,
+                        converted: true,
+                        originalUnit: ingredient.unit,
+                        originalScaledValue: scaledQuantity,
+                        conversionKey: matchedConversion.key
+                    };
+                }
+                
                 const scaledBaseValue = ingredient.baseValue * scaleFactor;
                 
                 // Check if there's a unit override for this ingredient
@@ -1414,11 +1508,16 @@
                                                             ) : (
                                                                 <>
                                                                     <span className="text-green-400 font-bold">
-                                                                        {formatNumber(scaled.value)} {scaled.unit}
+                                                                        {formatNumber(scaled.value)} {pluralize(scaled.value, scaled.unit)}
                                                                     </span>
                                                                     <span className="text-gray-100 ml-2">
                                                                         {ingredient.ingredient}
                                                                     </span>
+                                                                    {scaled.converted && scaled.originalScaledValue && (
+                                                                        <span className="ml-2 text-xs text-blue-400">
+                                                                            (or {formatNumber(scaled.originalScaledValue)} {pluralize(scaled.originalScaledValue, scaled.originalUnit === 'count' ? ingredient.ingredient.split(' ')[0] : scaled.originalUnit)})
+                                                                        </span>
+                                                                    )}
                                                                 </>
                                                             )}
                                                             {ingredient.isRange && ingredient.rangeOriginal && (
