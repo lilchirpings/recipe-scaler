@@ -66,31 +66,131 @@
             'pounds': 453.592,
         };
 
-        // Smart unit conversion for display
+        // Smart unit conversion for display following chef-friendly decision tree
         const smartConvertVolume = (tsp, useMetric) => {
             if (useMetric) {
                 const ml = tsp / 0.202884;
-                if (ml >= 1000) return { value: ml / 1000, unit: 'L' };
-                return { value: ml, unit: 'ml' };
+                if (ml >= 1000) {
+                    const liters = Math.floor(ml / 1000);
+                    const remainingMl = Math.round(ml - (liters * 1000));
+                    if (remainingMl >= 10) {
+                        return { value: liters, unit: 'L', remainder: remainingMl, remainderUnit: 'ml' };
+                    }
+                    return { value: Math.round(ml / 1000 * 100) / 100, unit: 'L' };
+                }
+                return { value: Math.round(ml), unit: 'ml' };
             } else {
-                if (tsp >= 768) return { value: tsp / 768, unit: 'gal' };
-                if (tsp >= 192) return { value: tsp / 192, unit: 'qt' };
-                if (tsp >= 96) return { value: tsp / 96, unit: 'pt' };
-                if (tsp >= 48) return { value: tsp / 48, unit: 'cup' };
-                if (tsp >= 6) return { value: tsp / 6, unit: 'fl oz' };
-                if (tsp >= 3) return { value: tsp / 3, unit: 'tbsp' };
-                return { value: tsp, unit: 'tsp' };
+                // Decision tree for US measurements
+                
+                // Step 1: Convert to cups
+                const cups = tsp / 48;
+                
+                // Step 7: If smaller than ⅛ tsp, use "a pinch"
+                if (tsp < 0.125) {
+                    return { value: 0, unit: 'pinch' };
+                }
+                
+                // Step 6: Less than ¼ cup (12 tsp) → convert to teaspoons, round to nearest ¼ tsp
+                if (cups < 0.25) {
+                    const roundedTsp = Math.round(tsp * 4) / 4;
+                    return { value: roundedTsp, unit: 'tsp' };
+                }
+                
+                // Step 5: Between ¼ cup and 1 cup → convert to tablespoons, round to nearest ¼ tbsp
+                if (cups >= 0.25 && cups < 1) {
+                    const tbsp = tsp / 3;
+                    const roundedTbsp = Math.round(tbsp * 4) / 4;
+                    return { value: roundedTbsp, unit: 'tbsp' };
+                }
+                
+                // Step 2: 8 cups or more → use quarts, round to nearest ¼ quart
+                if (cups >= 8) {
+                    const quarts = cups / 4;
+                    const roundedQuarts = Math.round(quarts * 4) / 4;
+                    return { value: roundedQuarts, unit: 'qt' };
+                }
+                
+                // Step 3: Between 4 and 8 cups → prefer quarts, but break down if leftover is awkward
+                if (cups >= 4 && cups < 8) {
+                    const quarts = Math.floor(cups / 4);
+                    const remainingCups = cups - (quarts * 4);
+                    
+                    // Round remaining cups to nearest ¼ cup
+                    const roundedRemainingCups = Math.round(remainingCups * 4) / 4;
+                    
+                    // If remaining cups is awkward (less than ¼ cup), convert to tbsp/tsp
+                    if (roundedRemainingCups > 0 && roundedRemainingCups < 0.25) {
+                        const remainingTsp = remainingCups * 48;
+                        if (remainingTsp >= 3) {
+                            const tbsp = Math.round(remainingTsp / 3 * 4) / 4;
+                            return { value: quarts, unit: 'qt', remainder: tbsp, remainderUnit: 'tbsp' };
+                        } else {
+                            const roundedTsp = Math.round(remainingTsp * 4) / 4;
+                            return { value: quarts, unit: 'qt', remainder: roundedTsp, remainderUnit: 'tsp' };
+                        }
+                    }
+                    
+                    // Otherwise show quarts + cups if cups >= ¼
+                    if (roundedRemainingCups >= 0.25) {
+                        return { value: quarts, unit: 'qt', remainder: roundedRemainingCups, remainderUnit: 'cup' };
+                    }
+                    
+                    // Just quarts if no significant remainder
+                    return { value: quarts, unit: 'qt' };
+                }
+                
+                // Step 4: Between 1 and 4 cups → display in cups
+                // Round to nearest ¼ cup or ⅓ cup (whichever is closer)
+                const roundedQuarterCup = Math.round(cups * 4) / 4;
+                const roundedThirdCup = Math.round(cups * 3) / 3;
+                
+                // Choose whichever is closer to the original value
+                const quarterDiff = Math.abs(cups - roundedQuarterCup);
+                const thirdDiff = Math.abs(cups - roundedThirdCup);
+                
+                const roundedCups = thirdDiff < quarterDiff ? roundedThirdCup : roundedQuarterCup;
+                return { value: roundedCups, unit: 'cup' };
             }
         };
 
         const smartConvertWeight = (g, useMetric) => {
             if (useMetric) {
-                if (g >= 1000) return { value: g / 1000, unit: 'kg' };
-                return { value: g, unit: 'g' };
+                if (g >= 1000) {
+                    const kg = Math.floor(g / 1000);
+                    const remainingG = Math.round(g - (kg * 1000));
+                    if (remainingG >= 50) { // Only show grams if 50g or more
+                        return { value: kg, unit: 'kg', remainder: remainingG, remainderUnit: 'g' };
+                    }
+                    return { value: g / 1000, unit: 'kg' };
+                }
+                return { value: Math.round(g), unit: 'g' };
             } else {
-                if (g >= 453.592) return { value: g / 453.592, unit: 'lb' };
-                return { value: g / 28.3495, unit: 'oz' };
+                if (g >= 453.592) {
+                    const lb = Math.floor(g / 453.592);
+                    const remainingG = g - (lb * 453.592);
+                    if (remainingG >= 28.3495) { // 1+ oz remaining
+                        const oz = Math.round(remainingG / 28.3495);
+                        return { value: lb, unit: 'lb', remainder: oz, remainderUnit: 'oz' };
+                    }
+                    return { value: g / 453.592, unit: 'lb' };
+                }
+                return { value: Math.round(g / 28.3495 * 10) / 10, unit: 'oz' }; // Round to nearest 0.1 oz
             }
+        };
+
+        // Helper to format compound measurements
+        const formatCompoundMeasurement = (scaled) => {
+            if (scaled.remainder && scaled.remainderUnit) {
+                // Two-part compound measurement
+                return (
+                    <>
+                        {formatNumber(scaled.value)} {pluralize(scaled.value, scaled.unit)}
+                        <span className="text-gray-300"> + </span>
+                        {formatNumber(scaled.remainder)} {pluralize(scaled.remainder, scaled.remainderUnit)}
+                    </>
+                );
+            }
+            return <>{formatNumber(scaled.value)} {pluralize(scaled.value, scaled.unit)}</>;
         };
 
         // Parse ingredient line
@@ -149,7 +249,9 @@
                 /^(\d+\.\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Decimal range with unit: "1.5-3 teaspoons"
                 /^(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Whole number + unicode fraction with unit: "1½ cups"
+                // Whole number + unicode fraction with space: "1 ½ cups"
+                /^(\d+)\s+([½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,
+                // Whole number + unicode fraction (no space): "1½ cups"
                 /^(\d+)([½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,
                 // Mixed fraction with unit: "2 1/2 cups"
                 /^(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
@@ -202,7 +304,7 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Handle whole number + unicode fraction with unit: "1½ lbs"
+                    // Handle whole number + unicode fraction with space: "1 ½ tsp"
                     else if (pattern === patterns[2]) {
                         const whole = parseInt(match[1]);
                         const frac = parseUnicodeFraction(match[2]);
@@ -210,8 +312,16 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Handle mixed fractions with unit: "2 1/2 cups flour"
+                    // Handle whole number + unicode fraction (no space): "1½ lbs"
                     else if (pattern === patterns[3]) {
+                        const whole = parseInt(match[1]);
+                        const frac = parseUnicodeFraction(match[2]);
+                        quantity = whole + frac;
+                        unit = match[3].toLowerCase();
+                        ingredient = match[4];
+                    }
+                    // Handle mixed fractions with unit: "2 1/2 cups flour"
+                    else if (pattern === patterns[4]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -219,7 +329,7 @@
                         ingredient = match[4];
                     }
                     // Handle ambiguous "2-1/2" format with unit - could be range or mixed fraction
-                    else if (pattern === patterns[4]) {
+                    else if (pattern === patterns[5]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -240,17 +350,17 @@
                         }
                     }
                     // Handle mixed fraction ranges with unit
-                    else if (pattern === patterns[5] || pattern === patterns[6] || pattern === patterns[7]) {
+                    else if (pattern === patterns[6] || pattern === patterns[7] || pattern === patterns[8]) {
                         isRange = true;
                         let q1, q2;
-                        if (pattern === patterns[5]) {
+                        if (pattern === patterns[6]) {
                             // "1 1/2-2 1/2 cups"
                             q1 = parseInt(match[1]) + parseQuantity(match[2]);
                             q2 = parseInt(match[3]) + parseQuantity(match[4]);
                             rangeOriginal = `${match[1]} ${match[2]}-${match[3]} ${match[4]}`;
                             unit = match[5].toLowerCase();
                             ingredient = match[6];
-                        } else if (pattern === patterns[6]) {
+                        } else if (pattern === patterns[7]) {
                             // "2-2 1/2 cups"
                             q1 = parseInt(match[1]);
                             q2 = parseInt(match[2]) + parseQuantity(match[3]);
@@ -268,13 +378,13 @@
                         quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
                     }
                     // Standalone fraction with unit: "1/4 cup honey"
-                    else if (pattern === patterns[8]) {
+                    else if (pattern === patterns[9]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Fraction/decimal range: "1/2-3/4 cups"
-                    else if (pattern === patterns[9]) {
+                    else if (pattern === patterns[10]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -284,7 +394,7 @@
                         ingredient = match[4];
                     }
                     // Mixed fraction count: "2 1/2 eggs"
-                    else if (pattern === patterns[12]) {
+                    else if (pattern === patterns[13]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -306,7 +416,7 @@
                         };
                     }
                     // Standalone fraction count: "1/2 onion"
-                    else if (pattern === patterns[13]) {
+                    else if (pattern === patterns[14]) {
                         quantity = parseQuantity(match[1]);
                         ingredient = match[2];
                         
@@ -333,7 +443,7 @@
                         };
                     }
                     // Handle ambiguous "2-1/2" format for count - could be range or mixed fraction
-                    else if (pattern === patterns[14]) {
+                    else if (pattern === patterns[15]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -367,7 +477,7 @@
                         };
                     }
                     // Fraction/decimal range for count
-                    else if (pattern === patterns[15]) {
+                    else if (pattern === patterns[16]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -391,7 +501,7 @@
                         };
                     }
                     // Unicode fraction count: "½ onion"
-                    else if (pattern === patterns[16]) {
+                    else if (pattern === patterns[17]) {
                         quantity = parseUnicodeFraction(match[1]);
                         ingredient = match[2];
                         
@@ -411,7 +521,7 @@
                         };
                     }
                     // Simple count: "4 chicken thighs" - LAST RESORT (most general)
-                    else if (pattern === patterns[17]) {
+                    else if (pattern === patterns[18]) {
                         quantity = parseInt(match[1]);
                         ingredient = match[2];
                         
@@ -439,13 +549,13 @@
                         };
                     }
                     // Simple unit-based
-                    else if (pattern === patterns[10]) {
+                    else if (pattern === patterns[11]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Unicode fraction with unit
-                    else if (pattern === patterns[11]) {
+                    else if (pattern === patterns[12]) {
                         quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
@@ -506,19 +616,22 @@
         };
 
         const formatNumber = (num) => {
+            // Handle special case for pinch
+            if (num === 0) return 'a';
+            
             if (num % 1 === 0) return num.toString();
             
             // Try to convert to fraction if close
             const fractions = [
-                [0.125, '⅛'], [0.25, '¼'], [0.333, '⅓'], [0.375, '⅜'],
-                [0.5, '½'], [0.625, '⅝'], [0.667, '⅔'], [0.75, '¾'], [0.875, '⅞']
+                [0.125, '⅛'], [0.167, '⅙'], [0.25, '¼'], [0.333, '⅓'], [0.375, '⅜'],
+                [0.5, '½'], [0.625, '⅝'], [0.667, '⅔'], [0.75, '¾'], [0.833, '⅚'], [0.875, '⅞']
             ];
             
             const decimal = num % 1;
             const whole = Math.floor(num);
             
             for (const [val, frac] of fractions) {
-                if (Math.abs(decimal - val) < 0.01) {
+                if (Math.abs(decimal - val) < 0.02) { // Slightly more tolerance for thirds
                     return whole > 0 ? `${whole} ${frac}` : frac;
                 }
             }
@@ -566,8 +679,8 @@
 
         function RecipeScaler() {
             const [inputText, setInputText] = useState('');
-            const [originalServings, setOriginalServings] = useState(1);
-            const [targetServings, setTargetServings] = useState(20);
+            const [originalServings, setOriginalServings] = useState(4);
+            const [targetServings, setTargetServings] = useState(8);
             const [useMetric, setUseMetric] = useState(false);
             const [parsedIngredients, setParsedIngredients] = useState([]);
             const [unparsedLines, setUnparsedLines] = useState([]);
@@ -844,7 +957,11 @@
                     return { value: '', unit: 'to taste' };
                 }
                 
-                const scaleFactor = targetServings / originalServings;
+                // Handle empty servings values
+                const origServings = originalServings === '' || originalServings <= 0 ? 1 : originalServings;
+                const targServings = targetServings === '' || targetServings <= 0 ? 1 : targetServings;
+                
+                const scaleFactor = targServings / origServings;
                 const scaledQuantity = ingredient.quantity * scaleFactor;
                 
                 // Check if this ingredient matches a custom conversion
@@ -943,9 +1060,14 @@
                 if (parsedIngredients.length === 0) return;
                 
                 let text = `Recipe (${targetServings} servings)\n\n`;
-                parsedIngredients.forEach(ingredient => {
-                    const scaled = scaleIngredient(ingredient);
-                    const amount = `${formatNumber(scaled.value)}${scaled.unit ? ' ' + scaled.unit : ''}`;
+                parsedIngredients.forEach((ingredient, idx) => {
+                    const scaled = scaleIngredient(ingredient, idx);
+                    let amount;
+                    if (scaled.remainder && scaled.remainderUnit) {
+                        amount = `${formatNumber(scaled.value)} ${scaled.unit} + ${formatNumber(scaled.remainder)} ${scaled.remainderUnit}`;
+                    } else {
+                        amount = `${formatNumber(scaled.value)}${scaled.unit ? ' ' + scaled.unit : ''}`;
+                    }
                     text += `${amount} ${ingredient.ingredient}\n`;
                 });
                 
@@ -1090,15 +1212,15 @@
                                 <div className="mb-8">
                                     <h3 className="text-xl font-bold text-green-400 mb-3">Custom Conversions</h3>
                                     <p className="text-gray-400 mb-4">
-                                        Define your own conversions for ambiguous measurements. For example, if you typically use 
-                                        10 cloves per garlic bulb, or 1.5 cups per medium onion, add them here.
+                                        Define bidirectional conversions for ambiguous measurements. Once set, conversions work automatically in both directions. 
+                                        For example, defining "1 garlic bulb ⇄ 10 cloves" lets you convert bulbs to cloves OR cloves to bulbs.
                                     </p>
                                     
                                     <div className="bg-gray-700 p-6 rounded-lg mb-4">
                                         <h4 className="font-semibold text-gray-200 mb-3">Add New Conversion</h4>
                                         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                                             <div>
-                                                <label className="block text-sm text-gray-400 mb-1">From (Unit/Item)</label>
+                                                <label className="block text-sm text-gray-400 mb-1">Unit A</label>
                                                 <input
                                                     type="text"
                                                     value={newConversionFrom}
@@ -1108,7 +1230,7 @@
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm text-gray-400 mb-1">To (Unit/Item)</label>
+                                                <label className="block text-sm text-gray-400 mb-1">Unit B</label>
                                                 <input
                                                     type="text"
                                                     value={newConversionTo}
@@ -1148,7 +1270,7 @@
                                             </div>
                                         </div>
                                         <p className="text-xs text-gray-500 mt-2">
-                                            Example: 1 "garlic bulb" = 10 "cloves" means enter bulb → cloves with ratio 10
+                                            Example: 1 "garlic bulb" ⇄ 10 "cloves" means enter bulb as Unit A, cloves as Unit B, ratio 10. Works both ways automatically.
                                         </p>
                                     </div>
                                     
@@ -1221,9 +1343,9 @@
                                                 <table className="w-full text-sm">
                                                     <thead>
                                                         <tr className="border-b border-gray-500">
-                                                            <th className="text-left p-2 text-gray-400">From</th>
+                                                            <th className="text-left p-2 text-gray-400">Unit A</th>
                                                             <th className="text-left p-2 text-gray-400">Ratio</th>
-                                                            <th className="text-left p-2 text-gray-400">To</th>
+                                                            <th className="text-left p-2 text-gray-400">Unit B</th>
                                                             <th className="text-left p-2 text-gray-400">Note</th>
                                                             <th className="text-right p-2 text-gray-400">Actions</th>
                                                         </tr>
@@ -1321,14 +1443,14 @@
                                 <div className="bg-gray-700 p-6 rounded-lg">
                                     <h4 className="font-semibold text-gray-200 mb-3">💡 Common Conversion Examples</h4>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-300">
-                                        <div>• 1 garlic bulb = 10-12 cloves</div>
-                                        <div>• 1 medium onion = 1.5 cups chopped</div>
-                                        <div>• 1 large onion = 2 cups chopped</div>
-                                        <div>• 1 bunch parsley = 1 cup chopped</div>
-                                        <div>• 1 medium lemon = 3 tbsp juice</div>
-                                        <div>• 1 can tomatoes = 14.5 oz</div>
-                                        <div>• 1 bunch basil = 0.5 cup chopped</div>
-                                        <div>• 1 medium carrot = 0.5 cup chopped</div>
+                                        <div>• 1 garlic bulb ⇄ 10-12 cloves</div>
+                                        <div>• 1 medium onion ⇄ 1.5 cups chopped</div>
+                                        <div>• 1 large onion ⇄ 2 cups chopped</div>
+                                        <div>• 1 bunch parsley ⇄ 1 cup chopped</div>
+                                        <div>• 1 medium lemon ⇄ 3 tbsp juice</div>
+                                        <div>• 1 can tomatoes ⇄ 14.5 oz</div>
+                                        <div>• 1 bunch basil ⇄ 0.5 cup chopped</div>
+                                        <div>• 1 medium carrot ⇄ 0.5 cup chopped</div>
                                     </div>
                                 </div>
                             </div>
@@ -1411,7 +1533,7 @@
                                         <input
                                             type="number"
                                             value={originalServings}
-                                            onChange={(e) => setOriginalServings(Number(e.target.value))}
+                                            onChange={(e) => setOriginalServings(e.target.value === '' ? '' : Number(e.target.value))}
                                             min="1"
                                             className="w-full bg-gray-700 text-gray-100 p-2 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
                                         />
@@ -1421,7 +1543,7 @@
                                         <input
                                             type="number"
                                             value={targetServings}
-                                            onChange={(e) => setTargetServings(Number(e.target.value))}
+                                            onChange={(e) => setTargetServings(e.target.value === '' ? '' : Number(e.target.value))}
                                             min="1"
                                             className="w-full bg-gray-700 text-gray-100 p-2 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
                                         />
@@ -1508,7 +1630,7 @@
                                                             ) : (
                                                                 <>
                                                                     <span className="text-green-400 font-bold">
-                                                                        {formatNumber(scaled.value)} {pluralize(scaled.value, scaled.unit)}
+                                                                        {formatCompoundMeasurement(scaled)}
                                                                     </span>
                                                                     <span className="text-gray-100 ml-2">
                                                                         {ingredient.ingredient}
@@ -1575,7 +1697,7 @@
                                 {parsedIngredients.length > 0 && (
                                     <div className="mt-4 p-3 bg-gray-700 rounded text-sm text-gray-400">
                                         <div>Parsed: {parsedIngredients.length} ingredients</div>
-                                        <div>Scale factor: {(targetServings / originalServings).toFixed(2)}x</div>
+                                        <div>Scale factor: {((targetServings || 1) / (originalServings || 1)).toFixed(2)}x</div>
                                     </div>
                                 )}
                             </div>
