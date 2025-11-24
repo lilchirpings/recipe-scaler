@@ -939,8 +939,14 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Mixed fraction count: "2 1/2 eggs"
+                    // Unicode fraction + unit: "½ tsp salt"
                     else if (pattern === patterns[13]) {
+                        quantity = parseUnicodeFraction(match[1]);
+                        unit = match[2].toLowerCase();
+                        ingredient = match[3];
+                    }
+                    // Mixed fraction count: "2 1/2 eggs"
+                    else if (pattern === patterns[14]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -963,7 +969,7 @@
                         };
                     }
                     // Standalone fraction count: "1/2 onion"
-                    else if (pattern === patterns[14]) {
+                    else if (pattern === patterns[15]) {
                         quantity = parseQuantity(match[1]);
                         ingredient = match[2];
                         
@@ -1457,7 +1463,17 @@
                         // Butter
                         'stick of butter': { to: 'cup', ratio: 0.5, note: 'U.S. standard (113g)' },
                         'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard (113g)' },
+                        'stick': { to: 'cup', ratio: 0.5, note: 'Butter stick (113g)' },
                         'cube of butter': { to: 'tbsp', ratio: 1, note: 'Often 1 tbsp piece (14g)' },
+                        'pat of butter': { to: 'tsp', ratio: 1, note: 'Small serving piece' },
+                        
+                        // Eggs
+                        'dozen eggs': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
+                        'dozen': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
+                        'flat of eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
+                        'flat eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
+                        'case of eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
+                        'case eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
                         
                         // Meat Cuts
                         'rasher': { to: 'slice', ratio: 1, note: 'Common in UK/Canada for bacon' },
@@ -2091,7 +2107,15 @@
                                                             'mint leaf': { to: 'g', ratio: 0.75, note: '0.5-1g each' },
                                                             'stick of butter': { to: 'cup', ratio: 0.5, note: 'U.S. standard (113g)' },
                                                             'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard (113g)' },
+                                                            'stick': { to: 'cup', ratio: 0.5, note: 'Butter stick (113g)' },
                                                             'cube of butter': { to: 'tbsp', ratio: 1, note: 'Often 1 tbsp piece (14g)' },
+                                                            'pat of butter': { to: 'tsp', ratio: 1, note: 'Small serving piece' },
+                                                            'dozen eggs': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
+                                                            'dozen': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
+                                                            'flat of eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
+                                                            'flat eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
+                                                            'case of eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
+                                                            'case eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
                                                             'rasher': { to: 'slice', ratio: 1, note: 'Common in UK/Canada for bacon' },
                                                             'small onion': { to: 'cup chopped', ratio: 0.75, note: 'Diced' },
                                                             'medium onion': { to: 'cup chopped', ratio: 1.5, note: 'Diced' },
