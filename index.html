@@ -1649,6 +1649,19 @@
              * 
              * Returns: {value, unit, converted, originalUnit, originalScaledValue}
              */
+            
+            // Helper: Format butter in sticks (from teaspoons base value)
+            const formatButterSticks = (tspValue) => {
+                const sticks = tspValue / 24; // 1 stick = 24 tsp (8 tbsp, 0.5 cup)
+                return { value: sticks, unit: 'sticks' };
+            };
+            
+            // Helper: Format eggs in dozens
+            const formatEggDozens = (eggCount) => {
+                const dozens = eggCount / 12;
+                return { value: dozens, unit: 'dozen' };
+            };
+            
             const scaleIngredient = (ingredient, idx) => {
                 // "To taste" items don't scale
                 if (ingredient.type === 'seasoning') {
@@ -1725,20 +1738,32 @@
                 const overrideUnit = unitOverrides[idx];
                 
                 if (ingredient.type === 'volume') {
+                    // Special case: "sticks" for butter
+                    if (overrideUnit === 'sticks') {
+                        return formatButterSticks(scaledBaseValue);
+                    }
                     if (overrideUnit) {
                         // Convert to specific unit
                         const conversionFactor = VOLUME_CONVERSIONS[overrideUnit];
-                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                        if (conversionFactor) {
+                            return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                        }
                     }
                     return smartConvertVolume(scaledBaseValue, useMetric);
                 } else if (ingredient.type === 'weight') {
                     if (overrideUnit) {
                         // Convert to specific unit
                         const conversionFactor = WEIGHT_CONVERSIONS[overrideUnit];
-                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                        if (conversionFactor) {
+                            return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                        }
                     }
                     return smartConvertWeight(scaledBaseValue, useMetric);
                 } else if (ingredient.type === 'count') {
+                    // Special case: "dozens" for eggs
+                    if (overrideUnit === 'dozens') {
+                        return formatEggDozens(scaledBaseValue);
+                    }
                     // For count items, just scale the number
                     return { value: scaledBaseValue, unit: '' };
                 }
@@ -1771,6 +1796,22 @@
             };
 
             const getUnitOptions = (ingredient) => {
+                const ingredientName = ingredient.ingredient.toLowerCase();
+                
+                // Butter: add "sticks" as a display option for volume measurements
+                if (ingredientName.includes('butter') && ingredient.type === 'volume') {
+                    if (useMetric) {
+                        return ['ml', 'l', 'sticks'];
+                    } else {
+                        return ['tsp', 'tbsp', 'fl oz', 'cup', 'pt', 'qt', 'gal', 'sticks'];
+                    }
+                }
+                
+                // Eggs: add "dozens" as a display option for count measurements  
+                if (ingredientName.includes('egg') && ingredient.type === 'count') {
+                    return ['count', 'dozens'];
+                }
+                
                 if (ingredient.type === 'volume') {
                     if (useMetric) {
                         return ['ml', 'l'];
@@ -2505,6 +2546,7 @@
                                                                                 range: {ingredient.rangeOriginal} {ingredient.unit !== 'count' ? ingredient.unit : ''}
                                                                             </span>
                                                                         )}
+                                                                        
                                                                         {unitOptions.length > 0 && (
                                                                             <select
                                                                                 value={unitOverrides[idx] || 'auto'}
