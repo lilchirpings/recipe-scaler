@@ -13,11 +13,51 @@
     <div id="root"></div>
 
     <script type="text/babel">
+        /* ============================================================================
+         * SMART RECIPE SCALER
+         * ============================================================================
+         * 
+         * PURPOSE:
+         * Intelligently scales recipe ingredients from one serving size to another
+         * with smart unit conversions and custom measurement handling.
+         * 
+         * KEY FEATURES:
+         * 1. Parses messy recipe text (handles fractions, ranges, unicode, counts)
+         * 2. Scales quantities proportionally based on serving size
+         * 3. Smart unit display (e.g., 96 tsp → 2 cups, ½ bulb → 6 cloves)
+         * 4. Custom conversions for ambiguous units (bulbs, cloves, bunches, etc.)
+         * 5. Bidirectional conversions (can go both ways)
+         * 6. Range handling (1-2 cups → use low/average/high)
+         * 7. Mobile-friendly with clean text layout and edit mode
+         * 
+         * ARCHITECTURE:
+         * - Single-file React app with Tailwind CSS
+         * - LocalStorage for custom conversions and saved recipes
+         * - Three main sections: Input, Scaler Output, Settings
+         * - Edit mode toggle for advanced controls
+         * 
+         * UNIT CONVERSION STRATEGY:
+         * - Volumes: Convert to teaspoons as base, then smart-convert for display
+         * - Weights: Convert to grams as base, then smart-convert for display
+         * - Counts: Keep as raw numbers (2 eggs, 3 onions)
+         * - Decision tree for display (see smartConvertVolume function)
+         * 
+         * CUSTOM CONVERSIONS:
+         * - Bidirectional: "1 bulb ⇄ 12 cloves" works both ways
+         * - Smart display: <1 of original unit shows in smaller unit (½ bulb → 6 cloves)
+         * - Stored in localStorage as customConversions object
+         * 
+         * ============================================================================
+         */
+
         const { useState, useEffect } = React;
 
-        // Unit conversion maps
+        // ============================================================================
+        // UNIT CONVERSION CONSTANTS
+        // ============================================================================
+        // All volume measurements converted to teaspoons as base unit
         const VOLUME_CONVERSIONS = {
-            // To teaspoons
+            // To teaspoons (base unit)
             'tsp': 1,
             'teaspoon': 1,
             'teaspoons': 1,
@@ -49,8 +89,9 @@
             'liters': 202.884,
         };
 
+        // All weight measurements converted to grams as base unit
         const WEIGHT_CONVERSIONS = {
-            // To grams
+            // To grams (base unit)
             'g': 1,
             'gram': 1,
             'grams': 1,
@@ -66,7 +107,29 @@
             'pounds': 453.592,
         };
 
-        // Smart unit conversion for display following chef-friendly decision tree
+        // ============================================================================
+        // SMART UNIT CONVERSION FUNCTIONS
+        // ============================================================================
+        // These functions implement a chef-friendly decision tree for displaying units
+        // Decision tree prevents ugly decimals like "1.04125 cups" or "2.69 tbsp"
+        
+        /* VOLUME CONVERSION DECISION TREE:
+         * 1. Convert everything to cups first
+         * 2. If < ⅛ tsp → "a pinch"
+         * 3. If < ¼ cup → show in teaspoons (rounded to nearest ¼ tsp)
+         * 4. If ¼ - 1 cup → show in tablespoons (rounded to nearest ¼ tbsp)
+         * 5. If 1-4 cups → show in cups (rounded to nearest ¼ or ⅓ cup)
+         * 6. If 4-8 cups → show in quarts + cups if remainder awkward
+         * 7. If 8+ cups → show in quarts (rounded to nearest ¼ qt)
+         * 
+         * WEIGHT CONVERSION DECISION TREE (SOLIDS):
+         * 1. If < 1g → "a pinch"
+         * 2. If < 15g → teaspoons (1 tsp ≈ 5g)
+         * 3. If 15-100g → tablespoons (1 tbsp ≈ 15g)
+         * 4. If 100-500g → cups (1 cup ≈ 125g, rounded to ¼ or ⅓)
+         * 5. If 500g+ → cups if clean conversion, otherwise g/kg or oz/lb
+         * Note: Weight-to-volume conversions are approximations (density varies)
+         */
         const smartConvertVolume = (tsp, useMetric) => {
             if (useMetric) {
                 const ml = tsp / 0.202884;
@@ -153,47 +216,192 @@
             }
         };
 
+        /* WEIGHT CONVERSION DECISION TREE FOR SOLIDS:
+         * 1. If < 1g → "a pinch"
+         * 2. If < 15g → display in teaspoons (approximation: 1 tsp ≈ 5g for most dry goods)
+         * 3. If 15-100g → display in tablespoons (1 tbsp ≈ 15g)
+         * 4. If 100-500g → display in cups (1 cup ≈ 120-130g, varies by ingredient)
+         * 5. If 500g+ → display in cups if clean, otherwise grams
+         * 
+         * Note: These are approximations since density varies (flour vs sugar vs salt)
+         * For imperial mode, we'll use similar logic with oz as base
+         */
         const smartConvertWeight = (g, useMetric) => {
             if (useMetric) {
+                // Metric decision tree for solids
+                
+                // Step 1: < 1g → "a pinch"
+                if (g < 1) {
+                    return { value: 0, unit: 'pinch' };
+                }
+                
+                // Step 2: < 15g → display in teaspoons (approximate: 1 tsp ≈ 5g)
+                if (g < 15) {
+                    const tsp = g / 5; // Approximate conversion
+                    const roundedTsp = Math.round(tsp * 4) / 4; // Round to nearest ¼ tsp
+                    return { value: roundedTsp, unit: 'tsp' };
+                }
+                
+                // Step 3: 15-100g → display in tablespoons (1 tbsp ≈ 15g)
+                if (g < 100) {
+                    const tbsp = g / 15;
+                    const roundedTbsp = Math.round(tbsp * 4) / 4; // Round to nearest ¼ tbsp
+                    return { value: roundedTbsp, unit: 'tbsp' };
+                }
+                
+                // Step 4: 100-500g → display in cups (1 cup ≈ 125g average for dry goods)
+                if (g < 500) {
+                    const cups = g / 125;
+                    // Round to nearest ¼ or ⅓ cup (whichever is closer)
+                    const roundedQuarterCup = Math.round(cups * 4) / 4;
+                    const roundedThirdCup = Math.round(cups * 3) / 3;
+                    const quarterDiff = Math.abs(cups - roundedQuarterCup);
+                    const thirdDiff = Math.abs(cups - roundedThirdCup);
+                    const roundedCups = thirdDiff < quarterDiff ? roundedThirdCup : roundedQuarterCup;
+                    return { value: roundedCups, unit: 'cup' };
+                }
+                
+                // Step 5: 500g+ → display in cups if clean, otherwise grams
+                const cups = g / 125;
+                const roundedCups = Math.round(cups * 4) / 4;
+                // If the cup conversion is "clean" (close to a nice fraction), use it
+                if (Math.abs(cups - roundedCups) < 0.1) {
+                    return { value: roundedCups, unit: 'cup' };
+                }
+                
+                // Otherwise use kg + g for large amounts
                 if (g >= 1000) {
                     const kg = Math.floor(g / 1000);
                     const remainingG = Math.round(g - (kg * 1000));
-                    if (remainingG >= 50) { // Only show grams if 50g or more
+                    if (remainingG >= 50) {
                         return { value: kg, unit: 'kg', remainder: remainingG, remainderUnit: 'g' };
                     }
                     return { value: g / 1000, unit: 'kg' };
                 }
+                
                 return { value: Math.round(g), unit: 'g' };
+                
             } else {
+                // Imperial mode - similar logic but using oz as base
+                
+                // Step 1: < 0.035 oz (≈1g) → "a pinch"
+                if (g < 1) {
+                    return { value: 0, unit: 'pinch' };
+                }
+                
+                const oz = g / 28.3495;
+                
+                // Step 2: < 0.5 oz (≈15g) → teaspoons
+                if (oz < 0.5) {
+                    const tsp = g / 5;
+                    const roundedTsp = Math.round(tsp * 4) / 4;
+                    return { value: roundedTsp, unit: 'tsp' };
+                }
+                
+                // Step 3: 0.5-3.5 oz (≈15-100g) → tablespoons
+                if (oz < 3.5) {
+                    const tbsp = g / 15;
+                    const roundedTbsp = Math.round(tbsp * 4) / 4;
+                    return { value: roundedTbsp, unit: 'tbsp' };
+                }
+                
+                // Step 4: 3.5-17.5 oz (≈100-500g) → cups
+                if (oz < 17.5) {
+                    const cups = g / 125;
+                    const roundedQuarterCup = Math.round(cups * 4) / 4;
+                    const roundedThirdCup = Math.round(cups * 3) / 3;
+                    const quarterDiff = Math.abs(cups - roundedQuarterCup);
+                    const thirdDiff = Math.abs(cups - roundedThirdCup);
+                    const roundedCups = thirdDiff < quarterDiff ? roundedThirdCup : roundedQuarterCup;
+                    return { value: roundedCups, unit: 'cup' };
+                }
+                
+                // Step 5: >= 17.5 oz → cups if clean, otherwise oz/lb
+                const cups = g / 125;
+                const roundedCups = Math.round(cups * 4) / 4;
+                if (Math.abs(cups - roundedCups) < 0.1) {
+                    return { value: roundedCups, unit: 'cup' };
+                }
+                
+                // Use lb + oz for large amounts
                 if (g >= 453.592) {
                     const lb = Math.floor(g / 453.592);
                     const remainingG = g - (lb * 453.592);
-                    if (remainingG >= 28.3495) { // 1+ oz remaining
-                        const oz = Math.round(remainingG / 28.3495);
-                        return { value: lb, unit: 'lb', remainder: oz, remainderUnit: 'oz' };
+                    if (remainingG >= 28.3495) {
+                        const remainingOz = Math.round(remainingG / 28.3495);
+                        return { value: lb, unit: 'lb', remainder: remainingOz, remainderUnit: 'oz' };
                     }
                     return { value: g / 453.592, unit: 'lb' };
                 }
-                return { value: Math.round(g / 28.3495 * 10) / 10, unit: 'oz' }; // Round to nearest 0.1 oz
+                
+                return { value: Math.round(oz * 10) / 10, unit: 'oz' };
             }
         };
 
-        // Helper to format compound measurements
+        // ============================================================================
+        // DISPLAY FORMATTING FUNCTIONS
+        // ============================================================================
+        
+        /* FORMAT COMPOUND MEASUREMENTS
+         * Displays scaled measurements with proper unit handling:
+         * - Count items (eggs, onions): Show number only, no unit
+         * - Compound units (1 cup + 2 tbsp): Show with " + " separator
+         * - Single units: Show number + pluralized unit
+         */
         const formatCompoundMeasurement = (scaled) => {
+            // For count items, don't display the unit - it's handled by the ingredient name
+            if (scaled.unit === 'count' || scaled.unit === '') {
+                if (scaled.remainder && scaled.remainderUnit && scaled.remainderUnit !== 'count' && scaled.remainderUnit !== '') {
+                    // Count with a remainder in different unit (rare case)
+                    return (
+                        <>
+                            {formatNumber(scaled.value)}
+                            <span className="text-gray-300"> + </span>
+                            {formatNumber(scaled.remainder)} {pluralize(scaled.remainder, scaled.remainderUnit)}
+                        </>
+                    );
+                }
+                return <>{formatNumber(scaled.value)}</>;
+            }
+            
+            // Regular volume/weight measurements with units
+            const unitText = pluralize(scaled.value, scaled.unit);
             if (scaled.remainder && scaled.remainderUnit) {
+                const remainderUnitText = pluralize(scaled.remainder, scaled.remainderUnit);
                 // Two-part compound measurement
                 return (
                     <>
-                        {formatNumber(scaled.value)} {pluralize(scaled.value, scaled.unit)}
+                        {formatNumber(scaled.value)} {unitText}
                         <span className="text-gray-300"> + </span>
-                        {formatNumber(scaled.remainder)} {pluralize(scaled.remainder, scaled.remainderUnit)}
+                        {formatNumber(scaled.remainder)} {remainderUnitText}
                     </>
                 );
             }
-            return <>{formatNumber(scaled.value)} {pluralize(scaled.value, scaled.unit)}</>;
+            return <>{formatNumber(scaled.value)} {unitText}</>;
         };
 
-        // Parse ingredient line
+        // ============================================================================
+        // INGREDIENT PARSING ENGINE
+        // ============================================================================
+        
+        /* PARSE INGREDIENT LINE
+         * Complex regex-based parser that handles many formats:
+         * - "2 cups flour" (standard)
+         * - "1/2 tsp salt" (fraction)
+         * - "2 1/2 cups water" (mixed fraction)
+         * - "1½ cups milk" (unicode fraction with/without space)
+         * - "1-2 cups sugar" (range)
+         * - "3 eggs" (count)
+         * - "salt to taste" (seasoning)
+         * 
+         * Returns parsed object with:
+         * - quantity: numeric value
+         * - unit: the measurement unit
+         * - ingredient: the ingredient name
+         * - type: 'volume', 'weight', 'count', or 'seasoning'
+         * - isRange: boolean for range measurements
+         * - rangeOriginal: original range string if applicable
+         */
         const parseIngredient = (line, rangeMode = 'average') => {
             line = line.trim();
             if (!line) return null;
@@ -217,12 +425,36 @@
             // Store original for "to taste" handling
             const originalLine = line;
             
-            // Remove parenthetical notes but keep them for reference
+            // Parse parenthetical content for alternatives (e.g., "or 4 thighs")
             const parenMatch = line.match(/^(.+?)(\([^)]+\).*)$/);
             let notes = '';
+            let alternative = null; // Will store parsed alternative ingredient
+            
             if (parenMatch) {
                 line = parenMatch[1].trim();
-                notes = parenMatch[2].trim();
+                const parenContent = parenMatch[2];
+                notes = parenContent;
+                
+                // Check if parentheses contain an alternative ingredient (starts with "or")
+                // Examples: "(or 4 thighs)", "(or 2 cups)", "(or 3-4 chicken breasts)"
+                const altMatch = parenContent.match(/\(or\s+(.+?)\)/i);
+                if (altMatch) {
+                    const altText = altMatch[1].trim();
+                    // Try to parse the alternative as if it's a standalone ingredient
+                    // We'll recursively call parseIngredient on just the quantity/unit part
+                    const altParsed = parseIngredient(altText, rangeMode);
+                    if (altParsed && altParsed.quantity) {
+                        alternative = {
+                            quantity: altParsed.quantity,
+                            unit: altParsed.unit,
+                            ingredient: altParsed.ingredient,
+                            type: altParsed.type,
+                            baseValue: altParsed.baseValue,
+                            isRange: altParsed.isRange,
+                            rangeOriginal: altParsed.rangeOriginal
+                        };
+                    }
+                }
             }
             
             // Handle "to taste" - these are non-quantifiable
@@ -238,7 +470,8 @@
                     baseValue: 0,
                     isRange: false,
                     rangeOriginal: null,
-                    notes: notes
+                    notes: notes,
+                            alternative
                 };
             }
             
@@ -412,7 +645,8 @@
                             baseValue: quantity,
                             isRange,
                             rangeOriginal,
-                            notes
+                            notes,
+                            alternative
                         };
                     }
                     // Standalone fraction count: "1/2 onion"
@@ -439,7 +673,8 @@
                             baseValue: quantity,
                             isRange,
                             rangeOriginal,
-                            notes
+                            notes,
+                            alternative
                         };
                     }
                     // Handle ambiguous "2-1/2" format for count - could be range or mixed fraction
@@ -473,7 +708,8 @@
                             baseValue: quantity,
                             isRange,
                             rangeOriginal,
-                            notes
+                            notes,
+                            alternative
                         };
                     }
                     // Fraction/decimal range for count
@@ -497,7 +733,8 @@
                             baseValue: quantity,
                             isRange,
                             rangeOriginal,
-                            notes
+                            notes,
+                            alternative
                         };
                     }
                     // Unicode fraction count: "½ onion"
@@ -517,7 +754,8 @@
                             baseValue: quantity,
                             isRange,
                             rangeOriginal,
-                            notes
+                            notes,
+                            alternative
                         };
                     }
                     // Simple count: "4 chicken thighs" - LAST RESORT (most general)
@@ -545,7 +783,8 @@
                             baseValue: quantity,
                             isRange,
                             rangeOriginal,
-                            notes
+                            notes,
+                            alternative
                         };
                     }
                     // Simple unit-based
@@ -588,7 +827,8 @@
                             baseValue,
                             isRange,
                             rangeOriginal,
-                            notes
+                            notes,
+                            alternative // Include parsed alternative if found
                         };
                     }
                 }
@@ -615,6 +855,16 @@
             return fractions[str] || 1;
         };
 
+        /* FORMAT NUMBER WITH FRACTIONS
+         * Converts decimal numbers to nice fractions for display:
+         * - 0.5 → ½
+         * - 0.333 → ⅓
+         * - 0.667 → ⅔
+         * - 0.25 → ¼
+         * - 0.75 → ¾
+         * - etc.
+         * Also handles "pinch" for very small amounts (0 → "a")
+         */
         const formatNumber = (num) => {
             // Handle special case for pinch
             if (num === 0) return 'a';
@@ -639,6 +889,13 @@
             return num.toFixed(2).replace(/\.?0+$/, '');
         };
 
+        /* PLURALIZE UNITS
+         * Intelligently pluralizes measurement units:
+         * - If exactly 1: return singular (1 cup)
+         * - If already plural: return as-is (cups → cups)
+         * - Special cases: leaf → leaves, clove → cloves
+         * - Default: add 's' (tsp → tsps)
+         */
         const pluralize = (num, unit) => {
             // Round to check if singular or plural
             const roundedNum = Math.round(num * 100) / 100;
@@ -677,28 +934,47 @@
             return unit + 's';
         };
 
+        // ============================================================================
+        // MAIN REACT COMPONENT
+        // ============================================================================
+        
         function RecipeScaler() {
-            const [inputText, setInputText] = useState('');
-            const [originalServings, setOriginalServings] = useState(4);
-            const [targetServings, setTargetServings] = useState(8);
-            const [useMetric, setUseMetric] = useState(false);
-            const [parsedIngredients, setParsedIngredients] = useState([]);
-            const [unparsedLines, setUnparsedLines] = useState([]);
-            const [savedRecipes, setSavedRecipes] = useState([]);
-            const [recipeName, setRecipeName] = useState('');
-            const [showSaved, setShowSaved] = useState(false);
-            const [rangeHandling, setRangeHandling] = useState('average'); // 'low', 'average', 'high'
-            const [copySuccess, setCopySuccess] = useState(false);
-            const [unitOverrides, setUnitOverrides] = useState({}); // Track individual ingredient unit preferences
+            // ========================================================================
+            // STATE MANAGEMENT
+            // ========================================================================
+            
+            // Input/Output state
+            const [inputText, setInputText] = useState(''); // Raw pasted recipe text
+            const [originalServings, setOriginalServings] = useState(1); // Recipe's original serving size (changed to 1)
+            const [targetServings, setTargetServings] = useState(23); // Desired serving size (changed to 23)
+            const [parsedIngredients, setParsedIngredients] = useState([]); // Array of parsed ingredient objects
+            const [unparsedLines, setUnparsedLines] = useState([]); // Lines that couldn't be parsed
+            
+            // Display preferences
+            const [useMetric, setUseMetric] = useState(false); // Toggle metric vs imperial units
+            const [rangeHandling, setRangeHandling] = useState('average'); // How to handle ranges: 'low', 'average', 'high'
+            const [unitOverrides, setUnitOverrides] = useState({}); // Per-ingredient unit overrides {idx: unit}
+            const [cookingMode, setCookingMode] = useState(false); // Edit mode toggle (shows advanced controls)
+            const [checkedIngredients, setCheckedIngredients] = useState({}); // Track checked items {idx: boolean}
+            const [copySuccess, setCopySuccess] = useState(false); // Show "Copied!" feedback
+            
+            // Page navigation
             const [currentPage, setCurrentPage] = useState('scaler'); // 'scaler' or 'settings'
-            const [customConversions, setCustomConversions] = useState({});
-            const [newConversionFrom, setNewConversionFrom] = useState('');
-            const [newConversionTo, setNewConversionTo] = useState('');
-            const [newConversionRatio, setNewConversionRatio] = useState('');
-            const [newConversionNote, setNewConversionNote] = useState('');
-            const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-            const [editingKey, setEditingKey] = useState(null);
-            const [editValues, setEditValues] = useState({ to: '', ratio: '', note: '' });
+            const [mobileMenuOpen, setMobileMenuOpen] = useState(false); // Mobile nav menu state
+            
+            // Recipe management
+            const [savedRecipes, setSavedRecipes] = useState([]); // Array of saved recipes
+            const [recipeName, setRecipeName] = useState(''); // Name for saving current recipe
+            const [showSaved, setShowSaved] = useState(false); // Toggle saved recipes view
+            
+            // Custom conversions (e.g., "1 bulb = 12 cloves")
+            const [customConversions, setCustomConversions] = useState({}); // {unit: {to: string, ratio: number, note: string}}
+            const [newConversionFrom, setNewConversionFrom] = useState(''); // Form: unit to convert from
+            const [newConversionTo, setNewConversionTo] = useState(''); // Form: unit to convert to
+            const [newConversionRatio, setNewConversionRatio] = useState(''); // Form: conversion ratio
+            const [newConversionNote, setNewConversionNote] = useState(''); // Form: optional note
+            const [editingKey, setEditingKey] = useState(null); // Which conversion is being edited
+            const [editValues, setEditValues] = useState({ to: '', ratio: '', note: '' }); // Edit form values
 
             // Common ambiguous items that should show warnings
             const AMBIGUOUS_ITEMS = {
@@ -951,6 +1227,23 @@
                 setUnparsedLines(unparsed);
             };
 
+            /* ====================================================================
+             * SCALE INGREDIENT
+             * ====================================================================
+             * Core scaling logic with smart custom conversion handling
+             * 
+             * Process:
+             * 1. Calculate scale factor (target / original servings)
+             * 2. Scale the quantity
+             * 3. Check for custom conversions (e.g., bulbs ⇄ cloves)
+             * 4. Apply smart display logic:
+             *    - If scaled < 1 of original unit → show in smaller unit (½ bulb → 6 cloves)
+             *    - If scaled >= 1 → show in original unit with conversion in parentheses
+             * 5. For standard units, use smart conversion (smartConvertVolume/Weight)
+             * 6. Apply any user overrides from dropdown
+             * 
+             * Returns: {value, unit, converted, originalUnit, originalScaledValue}
+             */
             const scaleIngredient = (ingredient, idx) => {
                 // "To taste" items don't scale
                 if (ingredient.type === 'seasoning') {
@@ -996,13 +1289,27 @@
                 if (matchedConversion) {
                     const convertedValue = scaledQuantity * matchedConversion.ratio;
                     
-                    // Return in the converted unit with original value for reference
+                    // If the scaled quantity is less than 1 of the original unit, 
+                    // show in the converted (smaller) unit instead
+                    // e.g., "½ bulb" should show as "6 cloves" not "½ bulb"
+                    if (scaledQuantity < 1) {
+                        return { 
+                            value: convertedValue, 
+                            unit: matchedConversion.to,
+                            converted: false, // This is now the primary display
+                            originalUnit: ingredient.unit,
+                            originalScaledValue: null, // Don't show the fractional original
+                            conversionKey: matchedConversion.key
+                        };
+                    }
+                    
+                    // For >= 1 of the original unit, keep showing in original with conversion in parentheses
                     return { 
-                        value: convertedValue, 
-                        unit: matchedConversion.to,
-                        converted: true,
-                        originalUnit: ingredient.unit,
-                        originalScaledValue: scaledQuantity,
+                        value: scaledQuantity, 
+                        unit: ingredient.unit,
+                        converted: true, // Show the conversion in parentheses
+                        originalUnit: matchedConversion.to,
+                        originalScaledValue: convertedValue,
                         conversionKey: matchedConversion.key
                     };
                 }
@@ -1032,6 +1339,32 @@
                 }
             };
 
+            /* ====================================================================
+             * SCALE ALTERNATIVE INGREDIENT
+             * ====================================================================
+             * Scales the alternative ingredient from parentheses (e.g., "or 4 thighs")
+             * Uses the same scaling logic as the main ingredient
+             */
+            const scaleAlternative = (alternative, scaleFactor) => {
+                if (!alternative) return null;
+                
+                const scaledQuantity = alternative.quantity * scaleFactor;
+                
+                // Use the same conversion logic based on type
+                if (alternative.type === 'volume') {
+                    const scaledBaseValue = alternative.baseValue * scaleFactor;
+                    return smartConvertVolume(scaledBaseValue, useMetric);
+                } else if (alternative.type === 'weight') {
+                    const scaledBaseValue = alternative.baseValue * scaleFactor;
+                    return smartConvertWeight(scaledBaseValue, useMetric);
+                } else if (alternative.type === 'count') {
+                    return { value: scaledQuantity, unit: '' };
+                } else {
+                    // Fallback for unparsed alternatives - just scale the quantity
+                    return { value: scaledQuantity, unit: alternative.unit };
+                }
+            };
+
             const getUnitOptions = (ingredient) => {
                 if (ingredient.type === 'volume') {
                     if (useMetric) {
@@ -1056,19 +1389,60 @@
                 }));
             };
 
+            const toggleIngredientChecked = (idx) => {
+                setCheckedIngredients(prev => ({
+                    ...prev,
+                    [idx]: !prev[idx]
+                }));
+            };
+
             const copyToClipboard = () => {
                 if (parsedIngredients.length === 0) return;
                 
+                const scaleFactor = (targetServings || 1) / (originalServings || 1);
                 let text = `Recipe (${targetServings} servings)\n\n`;
                 parsedIngredients.forEach((ingredient, idx) => {
                     const scaled = scaleIngredient(ingredient, idx);
                     let amount;
+                    
+                    // Handle compound measurements
                     if (scaled.remainder && scaled.remainderUnit) {
-                        amount = `${formatNumber(scaled.value)} ${scaled.unit} + ${formatNumber(scaled.remainder)} ${scaled.remainderUnit}`;
-                    } else {
-                        amount = `${formatNumber(scaled.value)}${scaled.unit ? ' ' + scaled.unit : ''}`;
+                        const mainUnit = pluralize(scaled.value, scaled.unit);
+                        const remainderUnit = pluralize(scaled.remainder, scaled.remainderUnit);
+                        amount = `${formatNumber(scaled.value)} ${mainUnit} + ${formatNumber(scaled.remainder)} ${remainderUnit}`;
+                    } 
+                    // Handle count items (no unit to display)
+                    else if (scaled.unit === 'count' || scaled.unit === '') {
+                        amount = formatNumber(scaled.value);
                     }
-                    text += `${amount} ${ingredient.ingredient}\n`;
+                    // Handle regular measurements with units
+                    else {
+                        const unitText = pluralize(scaled.value, scaled.unit);
+                        amount = `${formatNumber(scaled.value)} ${unitText}`;
+                    }
+                    
+                    let line = `${amount} ${ingredient.ingredient}`;
+                    
+                    // Add scaled alternative if present
+                    if (ingredient.alternative) {
+                        const scaledAlt = scaleAlternative(ingredient.alternative, scaleFactor);
+                        if (scaledAlt) {
+                            let altAmount;
+                            if (scaledAlt.remainder && scaledAlt.remainderUnit) {
+                                const mainUnit = pluralize(scaledAlt.value, scaledAlt.unit);
+                                const remainderUnit = pluralize(scaledAlt.remainder, scaledAlt.remainderUnit);
+                                altAmount = `${formatNumber(scaledAlt.value)} ${mainUnit} + ${formatNumber(scaledAlt.remainder)} ${remainderUnit}`;
+                            } else if (scaledAlt.unit === 'count' || scaledAlt.unit === '') {
+                                altAmount = formatNumber(scaledAlt.value);
+                            } else {
+                                const unitText = pluralize(scaledAlt.value, scaledAlt.unit);
+                                altAmount = `${formatNumber(scaledAlt.value)} ${unitText}`;
+                            }
+                            line += ` (or ${altAmount} ${ingredient.alternative.ingredient})`;
+                        }
+                    }
+                    
+                    text += `${line}\n`;
                 });
                 
                 navigator.clipboard.writeText(text).then(() => {
@@ -1151,7 +1525,7 @@
                                                 : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                                         }`}
                                     >
-                                        ⚙ Settings
+                                        Conversion Preferences
                                     </button>
                                 </div>
                                 
@@ -1197,16 +1571,16 @@
                                                 : 'bg-gray-700 text-gray-300'
                                         }`}
                                     >
-                                        ⚙ Settings
+                                        Conversion Preferences
                                     </button>
                                 </div>
                             )}
                         </div>
 
-                        {/* Settings Page */}
+                        {/* Conversion Preferences Page */}
                         {currentPage === 'settings' && (
                             <div className="bg-gray-800 rounded-lg shadow-xl p-6">
-                                <h2 className="text-2xl font-bold text-green-400 mb-6">Settings</h2>
+                                <h2 className="text-2xl font-bold text-green-400 mb-6">Conversion Preferences</h2>
                                 
                                 {/* Custom Conversions Section */}
                                 <div className="mb-8">
@@ -1550,7 +1924,7 @@
                                     </div>
                                 </div>
 
-                                <div className="mt-4 flex items-center justify-between">
+                                <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                     <label className="flex items-center cursor-pointer">
                                         <input
                                             type="checkbox"
@@ -1561,17 +1935,20 @@
                                         <span className="text-sm text-gray-400">Use Metric Units</span>
                                     </label>
                                     
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm text-gray-400">Ranges:</span>
-                                        <select
-                                            value={rangeHandling}
-                                            onChange={(e) => setRangeHandling(e.target.value)}
-                                            className="bg-gray-700 text-gray-100 px-2 py-1 rounded border border-gray-600 focus:border-green-400 focus:outline-none text-sm"
-                                        >
-                                            <option value="low">Low (1-2 → 1)</option>
-                                            <option value="average">Average (1-2 → 1.5)</option>
-                                            <option value="high">High (1-2 → 2)</option>
-                                        </select>
+                                    <div className="flex flex-col gap-1">
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm text-gray-400">When recipe says "1-2 cups":</span>
+                                            <select
+                                                value={rangeHandling}
+                                                onChange={(e) => setRangeHandling(e.target.value)}
+                                                className="bg-gray-700 text-gray-100 px-2 py-1 rounded border border-gray-600 focus:border-green-400 focus:outline-none text-sm"
+                                            >
+                                                <option value="low">Use 1 (low)</option>
+                                                <option value="average">Use 1.5 (average)</option>
+                                                <option value="high">Use 2 (high)</option>
+                                            </select>
+                                        </div>
+                                        <span className="text-xs text-gray-500">How to handle range measurements</span>
                                     </div>
                                 </div>
 
@@ -1593,112 +1970,159 @@
                             </div>
 
                             {/* Output Section */}
-                            <div className="bg-gray-800 rounded-lg shadow-xl p-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-xl font-bold text-green-400">
-                                        Scaled Recipe ({targetServings} servings)
+                            <div className="bg-gray-800 rounded-lg shadow-xl p-4 sm:p-6">
+                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+                                    <h2 className="text-2xl font-bold text-green-400">
+                                        {targetServings} {targetServings === 1 ? 'serving' : 'servings'} scaled
                                     </h2>
                                     {parsedIngredients.length > 0 && (
-                                        <button
-                                            onClick={copyToClipboard}
-                                            className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-semibold text-sm flex items-center gap-2"
-                                        >
-                                            {copySuccess ? '✓ Copied!' : '📋 Copy Recipe'}
-                                        </button>
+                                        <div className="flex flex-wrap gap-2">
+                                            <button
+                                                onClick={() => setCookingMode(!cookingMode)}
+                                                className={`px-3 py-1.5 rounded text-sm transition-colors ${
+                                                    cookingMode 
+                                                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
+                                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                }`}
+                                            >
+                                                {cookingMode ? 'Show Details' : 'Edit Mode'}
+                                            </button>
+                                            <button
+                                                onClick={copyToClipboard}
+                                                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded text-sm"
+                                            >
+                                                {copySuccess ? '✓ Copied!' : '📋 Copy'}
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
 
                                 {parsedIngredients.length === 0 ? (
-                                    <div className="text-gray-400 text-center py-8">
-                                        Paste ingredients to see scaled results
+                                    <div className="text-gray-400 text-center py-12">
+                                        Paste ingredients above to see scaled results
                                     </div>
                                 ) : (
-                                    <div className="space-y-2">
-                                        {parsedIngredients.map((ingredient, idx) => {
-                                            const scaled = scaleIngredient(ingredient, idx);
-                                            const unitOptions = getUnitOptions(ingredient);
-                                            const showWarning = isAmbiguous(ingredient);
-                                            return (
-                                                <div key={idx} className="bg-gray-700 p-3 rounded">
-                                                    <div className="flex justify-between items-start gap-3">
-                                                        <div className="flex-1">
-                                                            {ingredient.type === 'seasoning' ? (
-                                                                <>
-                                                                    <span className="text-gray-100">{ingredient.ingredient}</span>
-                                                                    <span className="text-gray-400 ml-2 italic text-sm">to taste</span>
-                                                                </>
-                                                            ) : (
-                                                                <>
-                                                                    <span className="text-green-400 font-bold">
-                                                                        {formatCompoundMeasurement(scaled)}
-                                                                    </span>
-                                                                    <span className="text-gray-100 ml-2">
-                                                                        {ingredient.ingredient}
-                                                                    </span>
-                                                                    {scaled.converted && scaled.originalScaledValue && (
-                                                                        <span className="ml-2 text-xs text-blue-400">
-                                                                            (or {formatNumber(scaled.originalScaledValue)} {pluralize(scaled.originalScaledValue, scaled.originalUnit === 'count' ? ingredient.ingredient.split(' ')[0] : scaled.originalUnit)})
+                                    <>
+                                        <div className="space-y-3">
+                                            {parsedIngredients.map((ingredient, idx) => {
+                                                const scaled = scaleIngredient(ingredient, idx);
+                                                const unitOptions = getUnitOptions(ingredient);
+                                                const showWarning = isAmbiguous(ingredient);
+                                                const isChecked = checkedIngredients[idx];
+                                                
+                                                return (
+                                                    <div 
+                                                        key={idx} 
+                                                        className="group"
+                                                    >
+                                                        {/* Main ingredient line */}
+                                                        <div className="flex items-start gap-3 py-2 border-b border-gray-700/50">
+                                                            <button
+                                                                onClick={() => toggleIngredientChecked(idx)}
+                                                                className="flex-shrink-0 w-5 h-5 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            >
+                                                                {isChecked ? (
+                                                                    <div className="w-5 h-5 rounded bg-green-600/30 flex items-center justify-center text-green-400 text-xs">✓</div>
+                                                                ) : (
+                                                                    <div className="w-5 h-5 rounded border border-gray-600"></div>
+                                                                )}
+                                                            </button>
+                                                            
+                                                            <div className={`flex-1 min-w-0 ${isChecked ? 'opacity-40 line-through' : ''}`}>
+                                                                {ingredient.type === 'seasoning' ? (
+                                                                    <div className="text-base leading-relaxed">
+                                                                        <span className="text-gray-300">{ingredient.ingredient}</span>
+                                                                        <span className="text-gray-500 ml-2 italic">to taste</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="text-base leading-relaxed">
+                                                                        <span className="text-green-400 font-medium">
+                                                                            {formatCompoundMeasurement(scaled)}
                                                                         </span>
-                                                                    )}
-                                                                </>
-                                                            )}
-                                                            {ingredient.isRange && ingredient.rangeOriginal && (
-                                                                <span className="ml-2 text-xs text-yellow-400" title={`Original range: ${ingredient.rangeOriginal} ${ingredient.unit}`}>
-                                                                    [from {ingredient.rangeOriginal} {ingredient.unit !== 'count' ? ingredient.unit : ''}]
-                                                                </span>
-                                                            )}
-                                                            {showWarning && (
-                                                                <div className="mt-1 text-xs text-orange-400 flex items-center gap-1">
-                                                                    <span title={getAmbiguityWarning(ingredient)}>
-                                                                        ⚠️ {getAmbiguityWarning(ingredient)} - adjust to taste
-                                                                    </span>
-                                                                </div>
-                                                            )}
-                                                            {ingredient.notes && (
-                                                                <span className="ml-2 text-xs text-gray-500">
-                                                                    {ingredient.notes}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <div className="flex items-center gap-2">
-                                                            {unitOptions.length > 0 && (
-                                                                <select
-                                                                    value={unitOverrides[idx] || 'auto'}
-                                                                    onChange={(e) => setUnitOverride(idx, e.target.value === 'auto' ? null : e.target.value)}
-                                                                    className="bg-gray-600 text-gray-100 px-2 py-1 rounded border border-gray-500 focus:border-green-400 focus:outline-none text-xs"
-                                                                    title="Change unit"
-                                                                >
-                                                                    <option value="auto">Auto</option>
-                                                                    {unitOptions.map(unit => (
-                                                                        <option key={unit} value={unit}>{unit}</option>
-                                                                    ))}
-                                                                </select>
-                                                            )}
-                                                            <div className="text-xs text-gray-500 whitespace-nowrap">
-                                                                {ingredient.type !== 'seasoning' && `${ingredient.quantity} ${ingredient.unit}`}
+                                                                        <span className="text-gray-200 ml-2">
+                                                                            {ingredient.ingredient}
+                                                                        </span>
+                                                                        {/* Show scaled alternative if present */}
+                                                                        {ingredient.alternative && (() => {
+                                                                            const scaleFactor = (targetServings || 1) / (originalServings || 1);
+                                                                            const scaledAlt = scaleAlternative(ingredient.alternative, scaleFactor);
+                                                                            if (scaledAlt) {
+                                                                                return (
+                                                                                    <span className="text-gray-400 ml-2 text-sm">
+                                                                                        (or {formatCompoundMeasurement(scaledAlt)} {ingredient.alternative.ingredient})
+                                                                                    </span>
+                                                                                );
+                                                                            }
+                                                                        })()}
+                                                                        {/* Show conversion in parentheses */}
+                                                                        {scaled.converted && scaled.originalScaledValue && (
+                                                                            <span className="text-gray-500 ml-2 text-sm">
+                                                                                ({formatNumber(scaled.originalScaledValue)} {pluralize(scaled.originalScaledValue, scaled.originalUnit === 'count' ? ingredient.ingredient.split(' ')[0] : scaled.originalUnit)})
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Edit mode controls - only visible when edit mode is on */}
+                                                                {cookingMode && (
+                                                                    <div className="mt-2 flex flex-wrap gap-2 items-center text-xs">
+                                                                        {ingredient.isRange && ingredient.rangeOriginal && (
+                                                                            <span className="text-yellow-500 bg-yellow-900/20 px-2 py-0.5 rounded">
+                                                                                range: {ingredient.rangeOriginal} {ingredient.unit !== 'count' ? ingredient.unit : ''}
+                                                                            </span>
+                                                                        )}
+                                                                        {unitOptions.length > 0 && (
+                                                                            <select
+                                                                                value={unitOverrides[idx] || 'auto'}
+                                                                                onChange={(e) => setUnitOverride(idx, e.target.value === 'auto' ? null : e.target.value)}
+                                                                                className="bg-gray-700 text-gray-300 px-2 py-0.5 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
+                                                                            >
+                                                                                <option value="auto">auto</option>
+                                                                                {unitOptions.map(unit => (
+                                                                                    <option key={unit} value={unit}>{unit}</option>
+                                                                                ))}
+                                                                            </select>
+                                                                        )}
+                                                                        <span className="text-gray-600">
+                                                                            originally {ingredient.quantity} {ingredient.unit}
+                                                                        </span>
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {/* Warning - always visible if present */}
+                                                                {showWarning && !cookingMode && (
+                                                                    <div className="mt-1.5 text-xs text-orange-400/80">
+                                                                        ⚠ {getAmbiguityWarning(ingredient)}
+                                                                    </div>
+                                                                )}
+                                                                
+                                                                {ingredient.notes && (
+                                                                    <div className="mt-1 text-xs text-gray-500">
+                                                                        {ingredient.notes}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
+                                        </div>
                                         
-                                        {unparsedLines.length > 0 && (
-                                            <div className="mt-4 p-3 bg-red-900/30 border border-red-700 rounded">
-                                                <div className="text-red-400 font-bold mb-2">⚠ Couldn't parse these lines:</div>
+                                        {unparsedLines.length > 0 && cookingMode && (
+                                            <div className="mt-6 p-3 bg-red-900/20 border border-red-700/50 rounded text-sm">
+                                                <div className="text-red-400 font-medium mb-1">Couldn't parse:</div>
                                                 {unparsedLines.map((line, idx) => (
-                                                    <div key={idx} className="text-red-300 text-sm font-mono">• {line}</div>
+                                                    <div key={idx} className="text-red-300/80 text-xs">• {line}</div>
                                                 ))}
                                             </div>
                                         )}
-                                    </div>
-                                )}
-
-                                {parsedIngredients.length > 0 && (
-                                    <div className="mt-4 p-3 bg-gray-700 rounded text-sm text-gray-400">
-                                        <div>Parsed: {parsedIngredients.length} ingredients</div>
-                                        <div>Scale factor: {((targetServings || 1) / (originalServings || 1)).toFixed(2)}x</div>
-                                    </div>
+                                        
+                                        {cookingMode && (
+                                            <div className="mt-6 pt-4 border-t border-gray-700/50 text-xs text-gray-500">
+                                                {parsedIngredients.length} ingredients • {((targetServings || 1) / (originalServings || 1)).toFixed(2)}x scale
+                                            </div>
+                                        )}
+                                    </>
                                 )}
                             </div>
                         </div>
@@ -1710,7 +2134,7 @@
                                 <li>Handles whole items: "2 potatoes", "1 onion", "4 chicken breasts"</li>
                                 <li>Handles messy copy-paste - ignores extra text and instructions</li>
                                 <li>Smart unit conversion: 96 tsp → 2 cups (or metric equivalent)</li>
-                                <li>Supports ranges: "1-2 cups" or "2-3 eggs" - see original range in yellow text</li>
+                                <li><strong>Ranges:</strong> "1-2 cups" or "2-3 eggs" - choose how to handle them above (low/average/high). Scaled ranges shown in Edit Mode.</li>
                                 <li>Mixed fractions: "2 1/2 cups" works perfectly</li>
                             </ul>
                         </div>
