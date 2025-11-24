@@ -108,31 +108,185 @@
         };
 
         // ============================================================================
+        // INGREDIENT DENSITY AND CLASSIFICATION SYSTEM
+        // ============================================================================
+        // Comprehensive density table for accurate volume-to-weight conversions
+        // All densities in grams per cup (240ml)
+        
+        const INGREDIENT_DENSITIES = {
+            // Liquids (water-based)
+            'water': 240,
+            'milk': 245,
+            'cream': 240,
+            'broth': 240,
+            'stock': 240,
+            'juice': 240,
+            'wine': 235,
+            'beer': 240,
+            'oil': 220,
+            'olive oil': 216,
+            'vegetable oil': 220,
+            'honey': 340,
+            'molasses': 340,
+            'syrup': 330,
+            'maple syrup': 330,
+            
+            // Dry powdered solids
+            'flour': 120,
+            'all-purpose flour': 120,
+            'bread flour': 127,
+            'cake flour': 114,
+            'whole wheat flour': 120,
+            'cocoa': 100,
+            'cocoa powder': 100,
+            'powdered sugar': 120,
+            'confectioners sugar': 120,
+            'cornstarch': 128,
+            
+            // Granular solids
+            'sugar': 200,
+            'granulated sugar': 200,
+            'brown sugar': 220,
+            'salt': 292,
+            'kosher salt': 146,
+            'sea salt': 292,
+            'rice': 185,
+            'white rice': 185,
+            'lentils': 192,
+            'quinoa': 170,
+            'oats': 102,
+            'rolled oats': 102,
+            
+            // Fats
+            'butter': 227,
+            'shortening': 192,
+            'lard': 205,
+            'margarine': 227,
+            
+            // Nuts and seeds
+            'almonds': 143,
+            'walnuts': 117,
+            'pecans': 109,
+            'peanuts': 146,
+            'cashews': 130,
+            
+            // Cheese
+            'parmesan': 100,
+            'cheddar': 113,
+            'mozzarella': 113,
+            
+            // Default fallbacks
+            'powder': 120,
+            'grain': 185,
+            'liquid': 240
+        };
+        
+        // Ingredient classification for conversion logic
+        const INGREDIENT_CLASSES = {
+            liquids: ['water', 'milk', 'cream', 'broth', 'stock', 'juice', 'wine', 'beer', 'oil', 'olive oil', 
+                     'vegetable oil', 'coconut oil', 'sesame oil'],
+            dryPowders: ['flour', 'all-purpose flour', 'bread flour', 'cake flour', 'whole wheat flour', 
+                        'cocoa', 'cocoa powder', 'powdered sugar', 'confectioners sugar', 'cornstarch', 'baking powder', 
+                        'baking soda'],
+            granular: ['sugar', 'granulated sugar', 'brown sugar', 'salt', 'kosher salt', 'sea salt', 
+                      'rice', 'white rice', 'lentils', 'quinoa', 'oats', 'rolled oats'],
+            leafyHerbs: ['parsley', 'cilantro', 'basil', 'oregano', 'mint', 'thyme', 'rosemary', 'dill', 
+                        'chives', 'spinach', 'lettuce', 'arugula'],
+            fats: ['butter', 'shortening', 'lard', 'margarine', 'coconut oil'],
+            viscous: ['honey', 'molasses', 'syrup', 'maple syrup', 'corn syrup'],
+            strongSpices: ['clove', 'cloves', 'nutmeg', 'cayenne', 'cinnamon', 'ginger', 'turmeric', 'paprika'],
+            countable: ['egg', 'eggs', 'clove', 'cloves', 'garlic clove', 'garlic cloves', 'onion', 'onions', 
+                       'carrot', 'carrots', 'potato', 'potatoes', 'shrimp', 'meatball', 'meatballs']
+        };
+        
+        // Helper function to classify ingredient
+        const classifyIngredient = (ingredientName) => {
+            const lower = ingredientName.toLowerCase();
+            
+            for (const [category, items] of Object.entries(INGREDIENT_CLASSES)) {
+                for (const item of items) {
+                    if (lower.includes(item)) {
+                        return category;
+                    }
+                }
+            }
+            
+            // Default classification
+            return 'unknown';
+        };
+        
+        // Helper function to get ingredient density
+        const getIngredientDensity = (ingredientName) => {
+            const lower = ingredientName.toLowerCase();
+            
+            // Try exact match first
+            if (INGREDIENT_DENSITIES[lower]) {
+                return INGREDIENT_DENSITIES[lower];
+            }
+            
+            // Try partial matches
+            for (const [key, density] of Object.entries(INGREDIENT_DENSITIES)) {
+                if (lower.includes(key) || key.includes(lower)) {
+                    return density;
+                }
+            }
+            
+            // Return defaults based on classification
+            const classification = classifyIngredient(ingredientName);
+            if (classification === 'dryPowders') return 120;
+            if (classification === 'granular') return 185;
+            if (classification === 'liquids') return 240;
+            if (classification === 'fats') return 220;
+            
+            // Ultimate fallback
+            return 125;
+        };
+
+        // ============================================================================
         // SMART UNIT CONVERSION FUNCTIONS
         // ============================================================================
         // These functions implement a chef-friendly decision tree for displaying units
         // Decision tree prevents ugly decimals like "1.04125 cups" or "2.69 tbsp"
         
-        /* VOLUME CONVERSION DECISION TREE:
-         * 1. Convert everything to cups first
-         * 2. If < ⅛ tsp → "a pinch"
-         * 3. If < ¼ cup → show in teaspoons (rounded to nearest ¼ tsp)
-         * 4. If ¼ - 1 cup → show in tablespoons (rounded to nearest ¼ tbsp)
-         * 5. If 1-4 cups → show in cups (rounded to nearest ¼ or ⅓ cup)
-         * 6. If 4-8 cups → show in quarts + cups if remainder awkward
-         * 7. If 8+ cups → show in quarts (rounded to nearest ¼ qt)
+        /* PROFESSIONAL VOLUME CONVERSION DECISION TREE:
+         * Implements comprehensive liquid measurement display logic
+         * All input in teaspoons, converts to best display unit
          * 
-         * WEIGHT CONVERSION DECISION TREE (SOLIDS):
-         * 1. If < 1g → "a pinch"
-         * 2. If < 15g → teaspoons (1 tsp ≈ 5g)
-         * 3. If 15-100g → tablespoons (1 tbsp ≈ 15g)
-         * 4. If 100-500g → cups (1 cup ≈ 125g, rounded to ¼ or ⅓)
-         * 5. If 500g+ → cups if clean conversion, otherwise g/kg or oz/lb
-         * Note: Weight-to-volume conversions are approximations (density varies)
+         * Thresholds:
+         * - < 0.04 tsp (0.2 mL) → "a drop"
+         * - < 0.125 tsp (0.6 mL) → "a dash"  
+         * - < 0.125 tsp → "a pinch"
+         * - < 12 tsp (¼ cup / 60mL) → teaspoons
+         * - 12-48 tsp (¼-1 cup / 60-240mL) → tablespoons
+         * - 48-192 tsp (1-4 cups / 240-960mL) → cups
+         * - 192-384 tsp (4-8 cups / 960-1920mL) → quarts + cups
+         * - 384+ tsp (8+ cups / 1920+mL) → quarts
+         * 
+         * Metric mode: mL under 250, then L with 2 decimals
          */
-        const smartConvertVolume = (tsp, useMetric) => {
+        const smartConvertVolume = (tsp, useMetric, ingredientName = '') => {
             if (useMetric) {
                 const ml = tsp / 0.202884;
+                
+                // Step 1: Very small amounts
+                if (ml < 0.2) {
+                    return { value: 0, unit: 'drop' };
+                }
+                
+                // Step 2: If < 1 mL → "a dash" or "a pinch"
+                if (ml < 1) {
+                    if (ml < 0.6) {
+                        return { value: 0, unit: 'dash' };
+                    }
+                    return { value: 0, unit: 'pinch' };
+                }
+                
+                // Step 3: 1-250 mL → display in mL
+                if (ml < 250) {
+                    return { value: Math.round(ml), unit: 'ml' };
+                }
+                
+                // Step 4: >= 250 mL → convert to L with 2 decimals
                 if (ml >= 1000) {
                     const liters = Math.floor(ml / 1000);
                     const remainingMl = Math.round(ml - (liters * 1000));
@@ -141,39 +295,50 @@
                     }
                     return { value: Math.round(ml / 1000 * 100) / 100, unit: 'L' };
                 }
-                return { value: Math.round(ml), unit: 'ml' };
+                return { value: Math.round(ml / 1000 * 100) / 100, unit: 'L' };
             } else {
                 // Decision tree for US measurements
                 
-                // Step 1: Convert to cups
+                // Step 1: Convert to cups for context
                 const cups = tsp / 48;
+                const ml = tsp / 0.202884; // Also calculate mL for special cases
                 
-                // Step 7: If smaller than ⅛ tsp, use "a pinch"
+                // Step 1a: Very small amounts
+                if (ml < 0.2) {
+                    return { value: 0, unit: 'drop' };
+                }
+                
+                // Step 1b: Dash (slightly more than a drop, less than pinch)
+                if (tsp < 0.125 && ml >= 0.2 && ml < 0.6) {
+                    return { value: 0, unit: 'dash' };
+                }
+                
+                // Step 2: Pinch (less than ⅛ tsp)
                 if (tsp < 0.125) {
                     return { value: 0, unit: 'pinch' };
                 }
                 
-                // Step 6: Less than ¼ cup (12 tsp) → convert to teaspoons, round to nearest ¼ tsp
+                // Step 3: Less than ¼ cup (12 tsp) → teaspoons, round to nearest ¼ tsp
                 if (cups < 0.25) {
                     const roundedTsp = Math.round(tsp * 4) / 4;
                     return { value: roundedTsp, unit: 'tsp' };
                 }
                 
-                // Step 5: Between ¼ cup and 1 cup → convert to tablespoons, round to nearest ¼ tbsp
+                // Step 4: Between ¼ cup and 1 cup → tablespoons, round to nearest ¼ tbsp
                 if (cups >= 0.25 && cups < 1) {
                     const tbsp = tsp / 3;
                     const roundedTbsp = Math.round(tbsp * 4) / 4;
                     return { value: roundedTbsp, unit: 'tbsp' };
                 }
                 
-                // Step 2: 8 cups or more → use quarts, round to nearest ¼ quart
+                // Step 5: 8 cups or more → quarts, round to nearest ¼ quart
                 if (cups >= 8) {
                     const quarts = cups / 4;
                     const roundedQuarts = Math.round(quarts * 4) / 4;
                     return { value: roundedQuarts, unit: 'qt' };
                 }
                 
-                // Step 3: Between 4 and 8 cups → prefer quarts, but break down if leftover is awkward
+                // Step 6: Between 4 and 8 cups → quarts + cups if remainder awkward
                 if (cups >= 4 && cups < 8) {
                     const quarts = Math.floor(cups / 4);
                     const remainingCups = cups - (quarts * 4);
@@ -916,6 +1081,7 @@
                 'bulb': 'bulbs',
                 'pinch': 'pinches',
                 'dash': 'dashes',
+                'drop': 'drops',
                 'inch': 'inches',
                 'bunch': 'bunches',
                 'sprig': 'sprigs',
