@@ -3,33 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Recipe Scaler</title>
+    <title>Smart Recipe Scaler</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        /* Neutral theme - refined grayscale with better contrast */
-        [data-theme="neutral"] .bg-gray-900 { background-color: rgb(18 18 18); } /* Darker base */
-        [data-theme="neutral"] .bg-gray-800 { background-color: rgb(32 32 32); } /* Cards */
-        [data-theme="neutral"] .bg-gray-700 { background-color: rgb(50 50 50); } /* Elevated elements */
-        [data-theme="neutral"] .bg-gray-600 { background-color: rgb(75 75 75); } /* Buttons */
-        [data-theme="neutral"] .bg-gray-500 { background-color: rgb(100 100 100); } /* Hover states */
-        [data-theme="neutral"] .text-green-400 { color: rgb(220 220 220); } /* Bright text for accents */
-        [data-theme="neutral"] .text-gray-200 { color: rgb(220 220 220); } /* Primary text */
-        [data-theme="neutral"] .text-gray-300 { color: rgb(200 200 200); } /* Secondary text */
-        [data-theme="neutral"] .text-gray-400 { color: rgb(155 155 155); } /* Muted text */
-        [data-theme="neutral"] .text-gray-500 { color: rgb(120 120 120); } /* Very muted */
-        [data-theme="neutral"] .bg-green-600 { background-color: rgb(90 90 90); } /* Action buttons */
-        [data-theme="neutral"] .hover\:bg-green-700:hover { background-color: rgb(110 110 110); } /* Lighter on hover */
-        [data-theme="neutral"] .hover\:bg-gray-500:hover { background-color: rgb(100 100 100); }
-        [data-theme="neutral"] .border-gray-600 { border-color: rgb(75 75 75); }
-        [data-theme="neutral"] .border-green-400 { border-color: rgb(120 120 120); }
-        [data-theme="neutral"] .focus\:border-green-400:focus { border-color: rgb(155 155 155); }
-        /* Fix blue buttons in neutral theme */
-        [data-theme="neutral"] .bg-blue-600 { background-color: rgb(90 90 90); }
-        [data-theme="neutral"] .hover\:bg-blue-700:hover { background-color: rgb(110 110 110); }
-    </style>
 </head>
 <body class="bg-gray-900 text-gray-100">
     <div id="root"></div>
@@ -162,11 +140,12 @@
         const VOLUME_CONVERSIONS = {
             // To teaspoons (base unit)
             'tsp': 1,
-            'tsps': 1,
             'teaspoon': 1,
             'teaspoons': 1,
+            'tsps': 1,
+            'pinch': 0.125,  // ~1/8 tsp
+            'dash': 0.125,   // ~1/8 tsp
             'tbsp': 3,
-            'tbsps': 3,
             'tablespoon': 3,
             'tablespoons': 3,
             'floz': 6,
@@ -179,15 +158,12 @@
             'pint': 96,
             'pints': 96,
             'pt': 96,
-            'pts': 96,
             'quart': 192,
             'quarts': 192,
             'qt': 192,
-            'qts': 192,
             'gallon': 768,
             'gallons': 768,
             'gal': 768,
-            'gals': 768,
             // Metric
             'ml': 0.202884,
             'milliliter': 0.202884,
@@ -770,8 +746,6 @@
                 /^(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Decimal with unit: "2.25 cups" or "10.5 tablespoons"
                 /^(\d+\.\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Number+unit without space: "113g butter" or "4oz butter" 
-                /^(\d+\.?\d*)([a-zA-Z]+)\s+(.+)$/,
                 // Decimal range with unit: "1.5-3 teaspoons"
                 /^(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s+([a-zA-Z]+)\s+(.+)$/,
                 // Ambiguous: could be range or mixed fraction: "2-1/2 cups" or "1-2 cups"
@@ -898,14 +872,8 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Number+unit without space: "113g butter" or "4oz butter"
-                    else if (pattern === patterns[5]) {
-                        quantity = parseFloat(match[1]);
-                        unit = match[2].toLowerCase();
-                        ingredient = match[3];
-                    }
                     // Handle ambiguous "2-1/2" format with unit - could be range or mixed fraction
-                    else if (pattern === patterns[6]) {
+                    else if (pattern === patterns[5]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -969,37 +937,14 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Unicode fraction + unit: "½ tsp salt"
+                    // Mixed fraction count: "2 1/2 eggs"
                     else if (pattern === patterns[13]) {
                         quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
-                    // Mixed fraction count: "2 1/2 eggs"
-                    else if (pattern === patterns[14]) {
-                        const whole = parseInt(match[1]);
-                        const frac = parseQuantity(match[2]);
-                        quantity = whole + frac;
-                        ingredient = match[3];
-                        
-                        // Clean up ingredient (remove commas and descriptions after comma)
-                        ingredient = ingredient.replace(/,.*$/, '').trim();
-                        
-                        return {
-                            original: originalLine,
-                            quantity,
-                            unit: 'count',
-                            ingredient: ingredient,
-                            type: 'count',
-                            baseValue: quantity,
-                            isRange,
-                            rangeOriginal,
-                            notes,
-                            alternative
-                        };
-                    }
                     // Standalone fraction count: "1/2 onion"
-                    else if (pattern === patterns[15]) {
+                    else if (pattern === patterns[14]) {
                         quantity = parseQuantity(match[1]);
                         ingredient = match[2];
                         
@@ -1108,35 +1053,21 @@
                         };
                     }
                     // Simple count: "4 chicken thighs" - LAST RESORT (most general)
-                    // Unicode fraction count: "½ onion"
                     else if (pattern === patterns[18]) {
-                        quantity = parseUnicodeFraction(match[1]);
-                        ingredient = match[2];
-                        
-                        // Clean up ingredient
-                        ingredient = ingredient.replace(/,.*$/, '').trim();
-                        
-                        return {
-                            original: originalLine,
-                            quantity,
-                            unit: 'count',
-                            ingredient: ingredient,
-                            type: 'count',
-                            baseValue: quantity,
-                            isRange,
-                            rangeOriginal,
-                            notes,
-                            alternative
-                        };
-                    }
-                    // Simple count: "4 chicken thighs" - LAST RESORT
-                    else if (pattern === patterns[19]) {
                         quantity = parseInt(match[1]);
                         ingredient = match[2];
                         
                         // Clean up ingredient (remove commas and descriptions after comma)
                         ingredient = ingredient.replace(/,.*$/, '').trim();
                         
+                        // Only treat as count if it doesn't look like it should have a unit
+                        // Check if the next word after the number is a known unit
+                        const firstWord = ingredient.split(/\s+/)[0]?.toLowerCase();
+                        if (VOLUME_CONVERSIONS[firstWord] || WEIGHT_CONVERSIONS[firstWord]) {
+                            // This is actually a unit-based ingredient, let it fall through
+                            continue;
+                        }
+                        
                         return {
                             original: originalLine,
                             quantity,
@@ -1150,22 +1081,36 @@
                             alternative
                         };
                     }
-                    // Simple unit-based
-                    else if (pattern === patterns[11]) {
-                        quantity = parseQuantity(match[1]);
-                        unit = match[2].toLowerCase();
-                        ingredient = match[3];
-                    }
-                    // Unicode fraction with unit
-                    // Simple number + unit: "2 cups flour"
+                    // Simple unit-based: "2 cups flour" (patterns[12])
                     else if (pattern === patterns[12]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
+                        
+                        // Check if this is a size descriptor (not a real unit)
+                        const sizeDescriptors = ['small', 'medium', 'large', 'extra-large', 'jumbo', 'whole', 'fresh', 'dried', 'chopped', 'minced', 'sliced', 'diced'];
+                        if (sizeDescriptors.includes(unit) || (!VOLUME_CONVERSIONS[unit] && !WEIGHT_CONVERSIONS[unit])) {
+                            // Treat as count item: "2 large eggs" → quantity=2, ingredient="large eggs"
+                            ingredient = match[2] + ' ' + match[3];
+                            ingredient = ingredient.replace(/,.*$/, '').trim();
+                            
+                            return {
+                                original: originalLine,
+                                quantity,
+                                unit: 'count',
+                                ingredient: ingredient,
+                                type: 'count',
+                                baseValue: quantity,
+                                isRange,
+                                rangeOriginal,
+                                notes,
+                                alternative
+                            };
+                        }
                     }
-                    // Unicode fraction + unit: "½ cup sugar"
+                    // Unicode fraction with unit (patterns[13])
                     else if (pattern === patterns[13]) {
-                        quantity = parseUnicodeFraction(match[1]);
+                        quantity = parseInt(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
@@ -1355,14 +1300,6 @@
             // Display preferences
             const [useMetric, setUseMetric] = useState(false); // Toggle metric vs imperial units
             const [rangeHandling, setRangeHandling] = useState('average'); // How to handle ranges: 'low', 'average', 'high'
-            const [fontSize, setFontSize] = useState(() => {
-                const saved = localStorage.getItem('fontSize');
-                return saved || 'medium'; // 'tiny', 'small', 'medium', 'large'
-            });
-            const [colorTheme, setColorTheme] = useState(() => {
-                const saved = localStorage.getItem('colorTheme');
-                return saved || 'forest'; // 'forest', 'neutral'
-            });
             const [unitOverrides, setUnitOverrides] = useState({}); // Per-ingredient unit overrides {idx: unit}
             const [cookingMode, setCookingMode] = useState(false); // Edit mode toggle (shows advanced controls)
             const [checkedIngredients, setCheckedIngredients] = useState({}); // Track checked items {idx: boolean}
@@ -1501,17 +1438,7 @@
                         // Butter
                         'stick of butter': { to: 'cup', ratio: 0.5, note: 'U.S. standard (113g)' },
                         'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard (113g)' },
-                        'stick': { to: 'cup', ratio: 0.5, note: 'Butter stick (113g)' },
                         'cube of butter': { to: 'tbsp', ratio: 1, note: 'Often 1 tbsp piece (14g)' },
-                        'pat of butter': { to: 'tsp', ratio: 1, note: 'Small serving piece' },
-                        
-                        // Eggs
-                        'dozen eggs': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
-                        'dozen': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
-                        'flat of eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
-                        'flat eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
-                        'case of eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
-                        'case eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
                         
                         // Meat Cuts
                         'rasher': { to: 'slice', ratio: 1, note: 'Common in UK/Canada for bacon' },
@@ -1538,30 +1465,6 @@
                     localStorage.setItem('customConversions', JSON.stringify(defaultConversions));
                 }
             }, []);
-            
-            // Get all available units for dropdown
-            const getAllAvailableUnits = () => {
-                const volumeUnits = Object.keys(VOLUME_CONVERSIONS).sort();
-                const weightUnits = Object.keys(WEIGHT_CONVERSIONS).sort();
-                const customUnits = Object.keys(customConversions).sort();
-                
-                // Combine all units and remove duplicates
-                const allUnits = [...new Set([
-                    ...volumeUnits,
-                    ...weightUnits,
-                    ...customUnits,
-                    // Add common ingredient-specific units
-                    'clove', 'cloves', 'bulb', 'bulbs', 'head', 'heads',
-                    'bunch', 'bunches', 'sprig', 'sprigs',
-                    'stick', 'sticks', 'dozen', 'flat', 'case',
-                    'can', 'cans', 'jar', 'jars', 'package', 'packages',
-                    'egg', 'eggs', 'onion', 'onions', 'carrot', 'carrots',
-                    'pinch', 'dash', 'drop', 'hint', 'smidgen', 'sprinkle',
-                    'leaf', 'leaves', 'piece', 'pieces', 'slice', 'slices'
-                ])].sort();
-                
-                return allUnits;
-            };
 
             const addCustomConversion = () => {
                 if (!newConversionFrom || !newConversionTo || !newConversionRatio) {
@@ -1687,32 +1590,6 @@
              * 
              * Returns: {value, unit, converted, originalUnit, originalScaledValue}
              */
-            
-            // Helper: Format butter in sticks (from teaspoons base value OR grams)
-            const formatButterSticks = (baseValue, sourceType = 'volume') => {
-                let sticks;
-                if (sourceType === 'weight') {
-                    // 1 stick = 113g (4 oz)
-                    sticks = baseValue / 113;
-                } else {
-                    // 1 stick = 24 tsp (8 tbsp, 0.5 cup)
-                    sticks = baseValue / 24;
-                }
-                return { value: sticks, unit: 'sticks' };
-            };
-            
-            // Helper: Format eggs in dozens
-            const formatEggDozens = (eggCount) => {
-                const dozens = eggCount / 12;
-                return { value: dozens, unit: 'dozen' };
-            };
-            
-            // Helper: Format eggs in flats
-            const formatEggFlats = (eggCount) => {
-                const flats = eggCount / 30; // 1 flat = 30 eggs (2.5 dozen)
-                return { value: flats, unit: 'flats' };
-            };
-            
             const scaleIngredient = (ingredient, idx) => {
                 // "To taste" items don't scale
                 if (ingredient.type === 'seasoning') {
@@ -1789,39 +1666,20 @@
                 const overrideUnit = unitOverrides[idx];
                 
                 if (ingredient.type === 'volume') {
-                    // Special case: "sticks" for butter
-                    if (overrideUnit === 'sticks') {
-                        return formatButterSticks(scaledBaseValue);
-                    }
                     if (overrideUnit) {
                         // Convert to specific unit
                         const conversionFactor = VOLUME_CONVERSIONS[overrideUnit];
-                        if (conversionFactor) {
-                            return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
-                        }
+                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
                     }
                     return smartConvertVolume(scaledBaseValue, useMetric);
                 } else if (ingredient.type === 'weight') {
-                    // Special case: "sticks" for butter by weight
-                    if (overrideUnit === 'sticks') {
-                        return formatButterSticks(scaledBaseValue, 'weight');
-                    }
                     if (overrideUnit) {
                         // Convert to specific unit
                         const conversionFactor = WEIGHT_CONVERSIONS[overrideUnit];
-                        if (conversionFactor) {
-                            return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
-                        }
+                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
                     }
                     return smartConvertWeight(scaledBaseValue, useMetric);
                 } else if (ingredient.type === 'count') {
-                    // Special case: "dozens" or "flats" for eggs
-                    if (overrideUnit === 'dozens') {
-                        return formatEggDozens(scaledBaseValue);
-                    }
-                    if (overrideUnit === 'flats') {
-                        return formatEggFlats(scaledBaseValue);
-                    }
                     // For count items, just scale the number
                     return { value: scaledBaseValue, unit: '' };
                 }
@@ -1854,34 +1712,6 @@
             };
 
             const getUnitOptions = (ingredient) => {
-                const ingredientName = ingredient.ingredient.toLowerCase();
-                
-                // Butter: add "sticks" as a display option whenever butter is mentioned
-                if (ingredientName.includes('butter')) {
-                    if (ingredient.type === 'volume') {
-                        if (useMetric) {
-                            return ['ml', 'l', 'sticks'];
-                        } else {
-                            return ['tsp', 'tbsp', 'fl oz', 'cup', 'pt', 'qt', 'gal', 'sticks'];
-                        }
-                    } else if (ingredient.type === 'weight') {
-                        // Butter by weight - still offer sticks
-                        if (useMetric) {
-                            return ['g', 'kg', 'sticks'];
-                        } else {
-                            return ['oz', 'lb', 'sticks'];
-                        }
-                    } else {
-                        // Unknown type butter - just offer sticks
-                        return ['sticks'];
-                    }
-                }
-                
-                // Eggs: add "dozens" and "flats" as display options for count measurements  
-                if (ingredientName.includes('egg') && ingredient.type === 'count') {
-                    return ['count', 'dozens', 'flats'];
-                }
-                
                 if (ingredient.type === 'volume') {
                     if (useMetric) {
                         return ['ml', 'l'];
@@ -2055,23 +1885,15 @@
                     parseInput();
                 }
             }, [inputText, rangeHandling]);
-            
-            useEffect(() => {
-                localStorage.setItem('fontSize', fontSize);
-            }, [fontSize]);
-            
-            useEffect(() => {
-                localStorage.setItem('colorTheme', colorTheme);
-            }, [colorTheme]);
 
             return (
-                <div data-theme={colorTheme} className="min-h-screen bg-gray-900 p-4">
+                <div className="min-h-screen bg-gray-900 p-4">
                     <div className="max-w-6xl mx-auto">
                         {/* Header with Navigation */}
                         <div className="bg-gray-800 rounded-lg shadow-xl p-4 md:p-6 mb-6">
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <h1 className="text-2xl md:text-3xl font-bold text-green-400 mb-1 md:mb-2">Recipe Scaler</h1>
+                                    <h1 className="text-2xl md:text-3xl font-bold text-green-400 mb-1 md:mb-2">Smart Recipe Scaler</h1>
                                     <p className="text-sm md:text-base text-gray-400 hidden sm:block">Scale recipes with intelligent unit conversions</p>
                                 </div>
                                 
@@ -2106,104 +1928,12 @@
                             <div className="bg-gray-800 rounded-lg shadow-xl p-6">
                                 <h2 className="text-2xl font-bold text-green-400 mb-6">Conversion Preferences</h2>
                                 
-                                {/* Display Settings Section */}
-                                <div className="mb-8">
-                                    <h3 className="text-xl font-bold text-green-400 mb-3">Display Settings</h3>
-                                    
-                                    {/* Color Theme */}
-                                    <div className="bg-gray-700 p-4 rounded-lg mb-4">
-                                        <label className="block text-sm font-semibold text-gray-200 mb-2">Color Theme</label>
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => setColorTheme('forest')}
-                                                className={`px-4 py-2 rounded font-semibold ${
-                                                    colorTheme === 'forest'
-                                                        ? 'bg-green-600 text-white'
-                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                                                }`}
-                                            >
-                                                Forest (Green)
-                                            </button>
-                                            <button
-                                                onClick={() => setColorTheme('neutral')}
-                                                className={`px-4 py-2 rounded font-semibold ${
-                                                    colorTheme === 'neutral'
-                                                        ? 'bg-green-600 text-white'
-                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                                                }`}
-                                            >
-                                                Neutral (Gray)
-                                            </button>
-                                        </div>
-                                        <p className="text-gray-400 text-sm mt-2">Choose between colorful or grayscale theme</p>
-                                    </div>
-                                    
-                                    {/* Font Size with Live Preview */}
-                                    <div className="bg-gray-700 p-4 rounded-lg">
-                                        <label className="block text-sm font-semibold text-gray-200 mb-2">Ingredient Text Size</label>
-                                        <div className="flex gap-2 mb-3 flex-wrap">
-                                            <button
-                                                onClick={() => setFontSize('tiny')}
-                                                className={`px-3 py-2 rounded font-semibold text-sm ${
-                                                    fontSize === 'tiny'
-                                                        ? 'bg-green-600 text-white'
-                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                                                }`}
-                                            >
-                                                Tiny
-                                            </button>
-                                            <button
-                                                onClick={() => setFontSize('small')}
-                                                className={`px-3 py-2 rounded font-semibold text-sm ${
-                                                    fontSize === 'small'
-                                                        ? 'bg-green-600 text-white'
-                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                                                }`}
-                                            >
-                                                Small
-                                            </button>
-                                            <button
-                                                onClick={() => setFontSize('medium')}
-                                                className={`px-3 py-2 rounded font-semibold text-sm ${
-                                                    fontSize === 'medium'
-                                                        ? 'bg-green-600 text-white'
-                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                                                }`}
-                                            >
-                                                Medium
-                                            </button>
-                                            <button
-                                                onClick={() => setFontSize('large')}
-                                                className={`px-3 py-2 rounded font-semibold text-sm ${
-                                                    fontSize === 'large'
-                                                        ? 'bg-green-600 text-white'
-                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
-                                                }`}
-                                            >
-                                                Large
-                                            </button>
-                                        </div>
-                                        {/* Live Preview */}
-                                        <div className="bg-gray-800 p-3 rounded border border-gray-600">
-                                            <p className="text-gray-500 text-xs mb-1">Preview:</p>
-                                            <div className={`${fontSize === 'tiny' ? 'text-xs' : fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-lg' : 'text-base'}`}>
-                                                <span className="text-green-400 font-medium">2 ½ cups</span>
-                                                <span className="text-gray-200 ml-2">flour</span>
-                                            </div>
-                                        </div>
-                                        <p className="text-gray-400 text-sm mt-2">Adjusts the size of ingredient text in scaled recipe output</p>
-                                    </div>
-                                </div>
-                                
                                 {/* Custom Conversions Section */}
                                 <div className="mb-8">
                                     <h3 className="text-xl font-bold text-green-400 mb-3">Custom Conversions</h3>
                                     <p className="text-gray-400 mb-4">
                                         Define bidirectional conversions for ambiguous measurements. Once set, conversions work automatically in both directions. 
                                         For example, defining "1 garlic bulb ⇄ 10 cloves" lets you convert bulbs to cloves OR cloves to bulbs.
-                                    </p>
-                                    <p className="text-gray-500 text-sm mb-4">
-                                        💡 <strong>Tip:</strong> Click or start typing in Unit fields to see available options. You can also enter custom units not in the list.
                                     </p>
                                     
                                     <div className="bg-gray-700 p-6 rounded-lg mb-4">
@@ -2213,33 +1943,21 @@
                                                 <label className="block text-sm text-gray-400 mb-1">Unit A</label>
                                                 <input
                                                     type="text"
-                                                    list="unit-options-from"
                                                     value={newConversionFrom}
                                                     onChange={(e) => setNewConversionFrom(e.target.value)}
                                                     placeholder="e.g., garlic bulb"
                                                     className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
                                                 />
-                                                <datalist id="unit-options-from">
-                                                    {getAllAvailableUnits().map(unit => (
-                                                        <option key={unit} value={unit} />
-                                                    ))}
-                                                </datalist>
                                             </div>
                                             <div>
                                                 <label className="block text-sm text-gray-400 mb-1">Unit B</label>
                                                 <input
                                                     type="text"
-                                                    list="unit-options-to"
                                                     value={newConversionTo}
                                                     onChange={(e) => setNewConversionTo(e.target.value)}
                                                     placeholder="e.g., cloves"
                                                     className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
                                                 />
-                                                <datalist id="unit-options-to">
-                                                    {getAllAvailableUnits().map(unit => (
-                                                        <option key={unit} value={unit} />
-                                                    ))}
-                                                </datalist>
                                             </div>
                                             <div>
                                                 <label className="block text-sm text-gray-400 mb-1">Ratio</label>
@@ -2315,15 +2033,7 @@
                                                             'mint leaf': { to: 'g', ratio: 0.75, note: '0.5-1g each' },
                                                             'stick of butter': { to: 'cup', ratio: 0.5, note: 'U.S. standard (113g)' },
                                                             'stick butter': { to: 'tbsp', ratio: 8, note: 'U.S. standard (113g)' },
-                                                            'stick': { to: 'cup', ratio: 0.5, note: 'Butter stick (113g)' },
                                                             'cube of butter': { to: 'tbsp', ratio: 1, note: 'Often 1 tbsp piece (14g)' },
-                                                            'pat of butter': { to: 'tsp', ratio: 1, note: 'Small serving piece' },
-                                                            'dozen eggs': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
-                                                            'dozen': { to: 'eggs', ratio: 12, note: 'Standard dozen' },
-                                                            'flat of eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
-                                                            'flat eggs': { to: 'eggs', ratio: 30, note: 'Standard flat (2.5 dozen)' },
-                                                            'case of eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
-                                                            'case eggs': { to: 'eggs', ratio: 180, note: 'Standard case (15 dozen)' },
                                                             'rasher': { to: 'slice', ratio: 1, note: 'Common in UK/Canada for bacon' },
                                                             'small onion': { to: 'cup chopped', ratio: 0.75, note: 'Diced' },
                                                             'medium onion': { to: 'cup chopped', ratio: 1.5, note: 'Diced' },
@@ -2483,51 +2193,34 @@
                                 </div>
 
                                 {showSaved && (
-                                    <>
-                                        {/* Warning banner */}
-                                        <div className="mb-3 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-700 border-opacity-50 rounded">
-                                            <div className="flex items-start gap-2">
-                                                <span className="text-yellow-500 text-lg">⚠️</span>
-                                                <div>
-                                                    <p className="text-yellow-200 text-sm font-semibold mb-1">Temporary Storage Only</p>
-                                                    <p className="text-yellow-300 text-xs">
-                                                        Saved recipes are stored in your browser and will be lost if you clear browser data, switch devices, or use a different browser. 
-                                                        Use this for quick comparisons during your current session only.
-                                                    </p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        
-                                        {/* Saved recipes list */}
-                                        <div className="mb-4 p-4 bg-gray-700 rounded max-h-64 overflow-y-auto">
-                                            {savedRecipes.length === 0 ? (
-                                                <p className="text-gray-400">No saved recipes</p>
-                                            ) : (
-                                                savedRecipes.map(recipe => (
-                                                    <div key={recipe.id} className="mb-2 p-2 bg-gray-600 rounded flex justify-between items-center">
-                                                        <div>
-                                                            <div className="font-bold">{recipe.name}</div>
-                                                            <div className="text-sm text-gray-400">{recipe.servings} servings</div>
-                                                        </div>
-                                                        <div className="flex gap-2">
-                                                            <button
-                                                                onClick={() => loadRecipe(recipe)}
-                                                                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-sm"
-                                                            >
-                                                                Load
-                                                            </button>
-                                                            <button
-                                                                onClick={() => deleteRecipe(recipe.id)}
-                                                                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
-                                                            >
-                                                                Delete
-                                                            </button>
-                                                        </div>
+                                    <div className="mb-4 p-4 bg-gray-700 rounded max-h-64 overflow-y-auto">
+                                        {savedRecipes.length === 0 ? (
+                                            <p className="text-gray-400">No saved recipes</p>
+                                        ) : (
+                                            savedRecipes.map(recipe => (
+                                                <div key={recipe.id} className="mb-2 p-2 bg-gray-600 rounded flex justify-between items-center">
+                                                    <div>
+                                                        <div className="font-bold">{recipe.name}</div>
+                                                        <div className="text-sm text-gray-400">{recipe.servings} servings</div>
                                                     </div>
-                                                ))
-                                            )}
-                                        </div>
-                                    </>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => loadRecipe(recipe)}
+                                                            className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-sm"
+                                                        >
+                                                            Load
+                                                        </button>
+                                                        <button
+                                                            onClick={() => deleteRecipe(recipe.id)}
+                                                            className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
+                                                        >
+                                                            Delete
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))
+                                        )}
+                                    </div>
                                 )}
 
                                 <div className="flex justify-between items-center mb-2">
@@ -2682,12 +2375,12 @@
                                                             
                                                             <div className={`flex-1 min-w-0 ${isChecked ? 'opacity-40 line-through' : ''}`}>
                                                                 {ingredient.type === 'seasoning' ? (
-                                                                    <div className={`leading-relaxed ${fontSize === 'tiny' ? 'text-xs' : fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-lg' : 'text-base'}`}>
+                                                                    <div className="text-base leading-relaxed">
                                                                         <span className="text-gray-300">{ingredient.ingredient}</span>
                                                                         <span className="text-gray-500 ml-2 italic">to taste</span>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className={`leading-relaxed ${fontSize === 'tiny' ? 'text-xs' : fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-lg' : 'text-base'}`}>
+                                                                    <div className="text-base leading-relaxed">
                                                                         <span className="text-green-400 font-medium">
                                                                             {formatCompoundMeasurement(scaled)}
                                                                         </span>
@@ -2730,7 +2423,6 @@
                                                                                 range: {ingredient.rangeOriginal} {ingredient.unit !== 'count' ? ingredient.unit : ''}
                                                                             </span>
                                                                         )}
-                                                                        
                                                                         {unitOptions.length > 0 && (
                                                                             <select
                                                                                 value={unitOverrides[idx] || 'auto'}
