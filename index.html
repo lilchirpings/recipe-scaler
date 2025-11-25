@@ -8,6 +8,28 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Neutral theme - refined grayscale with better contrast */
+        [data-theme="neutral"] .bg-gray-900 { background-color: rgb(18 18 18); } /* Darker base */
+        [data-theme="neutral"] .bg-gray-800 { background-color: rgb(32 32 32); } /* Cards */
+        [data-theme="neutral"] .bg-gray-700 { background-color: rgb(50 50 50); } /* Elevated elements */
+        [data-theme="neutral"] .bg-gray-600 { background-color: rgb(75 75 75); } /* Buttons */
+        [data-theme="neutral"] .bg-gray-500 { background-color: rgb(100 100 100); } /* Hover states */
+        [data-theme="neutral"] .text-green-400 { color: rgb(220 220 220); } /* Bright text for accents */
+        [data-theme="neutral"] .text-gray-200 { color: rgb(220 220 220); } /* Primary text */
+        [data-theme="neutral"] .text-gray-300 { color: rgb(200 200 200); } /* Secondary text */
+        [data-theme="neutral"] .text-gray-400 { color: rgb(155 155 155); } /* Muted text */
+        [data-theme="neutral"] .text-gray-500 { color: rgb(120 120 120); } /* Very muted */
+        [data-theme="neutral"] .bg-green-600 { background-color: rgb(90 90 90); } /* Action buttons */
+        [data-theme="neutral"] .hover\:bg-green-700:hover { background-color: rgb(110 110 110); } /* Lighter on hover */
+        [data-theme="neutral"] .hover\:bg-gray-500:hover { background-color: rgb(100 100 100); }
+        [data-theme="neutral"] .border-gray-600 { border-color: rgb(75 75 75); }
+        [data-theme="neutral"] .border-green-400 { border-color: rgb(120 120 120); }
+        [data-theme="neutral"] .focus\:border-green-400:focus { border-color: rgb(155 155 155); }
+        /* Fix blue buttons in neutral theme */
+        [data-theme="neutral"] .bg-blue-600 { background-color: rgb(90 90 90); }
+        [data-theme="neutral"] .hover\:bg-blue-700:hover { background-color: rgb(110 110 110); }
+    </style>
 </head>
 <body class="bg-gray-900 text-gray-100">
     <div id="root"></div>
@@ -843,7 +865,7 @@
                         ingredient = match[3];
                     }
                     // Handle decimal range with unit: "1.5-3 teaspoons"
-                    else if (pattern === patterns[6]) {
+                    else if (pattern === patterns[5]) {
                         const q1 = parseFloat(match[1]);
                         const q2 = parseFloat(match[2]);
                         isRange = true;
@@ -883,7 +905,7 @@
                         ingredient = match[3];
                     }
                     // Handle ambiguous "2-1/2" format with unit - could be range or mixed fraction
-                    else if (pattern === patterns[7]) {
+                    else if (pattern === patterns[6]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -904,17 +926,17 @@
                         }
                     }
                     // Handle mixed fraction ranges with unit
-                    else if (pattern === patterns[7] || pattern === patterns[8] || pattern === patterns[9]) {
+                    else if (pattern === patterns[6] || pattern === patterns[7] || pattern === patterns[8]) {
                         isRange = true;
                         let q1, q2;
-                        if (pattern === patterns[7]) {
+                        if (pattern === patterns[6]) {
                             // "1 1/2-2 1/2 cups"
                             q1 = parseInt(match[1]) + parseQuantity(match[2]);
                             q2 = parseInt(match[3]) + parseQuantity(match[4]);
                             rangeOriginal = `${match[1]} ${match[2]}-${match[3]} ${match[4]}`;
                             unit = match[5].toLowerCase();
                             ingredient = match[6];
-                        } else if (pattern === patterns[8]) {
+                        } else if (pattern === patterns[7]) {
                             // "2-2 1/2 cups"
                             q1 = parseInt(match[1]);
                             q2 = parseInt(match[2]) + parseQuantity(match[3]);
@@ -932,13 +954,13 @@
                         quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
                     }
                     // Standalone fraction with unit: "1/4 cup honey"
-                    else if (pattern === patterns[10]) {
+                    else if (pattern === patterns[9]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Fraction/decimal range: "1/2-3/4 cups"
-                    else if (pattern === patterns[11]) {
+                    else if (pattern === patterns[10]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -948,13 +970,13 @@
                         ingredient = match[4];
                     }
                     // Unicode fraction + unit: "½ tsp salt"
-                    else if (pattern === patterns[14]) {
+                    else if (pattern === patterns[13]) {
                         quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Mixed fraction count: "2 1/2 eggs"
-                    else if (pattern === patterns[15]) {
+                    else if (pattern === patterns[14]) {
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
@@ -977,7 +999,7 @@
                         };
                     }
                     // Standalone fraction count: "1/2 onion"
-                    else if (pattern === patterns[16]) {
+                    else if (pattern === patterns[15]) {
                         quantity = parseQuantity(match[1]);
                         ingredient = match[2];
                         
@@ -1005,7 +1027,7 @@
                         };
                     }
                     // Handle ambiguous "2-1/2" format for count - could be range or mixed fraction
-                    else if (pattern === patterns[16]) {
+                    else if (pattern === patterns[15]) {
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
@@ -1040,7 +1062,7 @@
                         };
                     }
                     // Fraction/decimal range for count
-                    else if (pattern === patterns[17]) {
+                    else if (pattern === patterns[16]) {
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -1065,7 +1087,7 @@
                         };
                     }
                     // Unicode fraction count: "½ onion"
-                    else if (pattern === patterns[18]) {
+                    else if (pattern === patterns[17]) {
                         quantity = parseUnicodeFraction(match[1]);
                         ingredient = match[2];
                         
@@ -1087,7 +1109,7 @@
                     }
                     // Simple count: "4 chicken thighs" - LAST RESORT (most general)
                     // Unicode fraction count: "½ onion"
-                    else if (pattern === patterns[19]) {
+                    else if (pattern === patterns[18]) {
                         quantity = parseUnicodeFraction(match[1]);
                         ingredient = match[2];
                         
@@ -1108,7 +1130,7 @@
                         };
                     }
                     // Simple count: "4 chicken thighs" - LAST RESORT
-                    else if (pattern === patterns[20]) {
+                    else if (pattern === patterns[19]) {
                         quantity = parseInt(match[1]);
                         ingredient = match[2];
                         
@@ -1129,20 +1151,20 @@
                         };
                     }
                     // Simple unit-based
-                    else if (pattern === patterns[12]) {
+                    else if (pattern === patterns[11]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Unicode fraction with unit
                     // Simple number + unit: "2 cups flour"
-                    else if (pattern === patterns[13]) {
+                    else if (pattern === patterns[12]) {
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
                     // Unicode fraction + unit: "½ cup sugar"
-                    else if (pattern === patterns[14]) {
+                    else if (pattern === patterns[13]) {
                         quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
@@ -1333,6 +1355,14 @@
             // Display preferences
             const [useMetric, setUseMetric] = useState(false); // Toggle metric vs imperial units
             const [rangeHandling, setRangeHandling] = useState('average'); // How to handle ranges: 'low', 'average', 'high'
+            const [fontSize, setFontSize] = useState(() => {
+                const saved = localStorage.getItem('fontSize');
+                return saved || 'medium'; // 'tiny', 'small', 'medium', 'large'
+            });
+            const [colorTheme, setColorTheme] = useState(() => {
+                const saved = localStorage.getItem('colorTheme');
+                return saved || 'forest'; // 'forest', 'neutral'
+            });
             const [unitOverrides, setUnitOverrides] = useState({}); // Per-ingredient unit overrides {idx: unit}
             const [cookingMode, setCookingMode] = useState(false); // Edit mode toggle (shows advanced controls)
             const [checkedIngredients, setCheckedIngredients] = useState({}); // Track checked items {idx: boolean}
@@ -2025,9 +2055,17 @@
                     parseInput();
                 }
             }, [inputText, rangeHandling]);
+            
+            useEffect(() => {
+                localStorage.setItem('fontSize', fontSize);
+            }, [fontSize]);
+            
+            useEffect(() => {
+                localStorage.setItem('colorTheme', colorTheme);
+            }, [colorTheme]);
 
             return (
-                <div className="min-h-screen bg-gray-900 p-4">
+                <div data-theme={colorTheme} className="min-h-screen bg-gray-900 p-4">
                     <div className="max-w-6xl mx-auto">
                         {/* Header with Navigation */}
                         <div className="bg-gray-800 rounded-lg shadow-xl p-4 md:p-6 mb-6">
@@ -2067,6 +2105,95 @@
                         {currentPage === 'settings' && (
                             <div className="bg-gray-800 rounded-lg shadow-xl p-6">
                                 <h2 className="text-2xl font-bold text-green-400 mb-6">Conversion Preferences</h2>
+                                
+                                {/* Display Settings Section */}
+                                <div className="mb-8">
+                                    <h3 className="text-xl font-bold text-green-400 mb-3">Display Settings</h3>
+                                    
+                                    {/* Color Theme */}
+                                    <div className="bg-gray-700 p-4 rounded-lg mb-4">
+                                        <label className="block text-sm font-semibold text-gray-200 mb-2">Color Theme</label>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => setColorTheme('forest')}
+                                                className={`px-4 py-2 rounded font-semibold ${
+                                                    colorTheme === 'forest'
+                                                        ? 'bg-green-600 text-white'
+                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                                                }`}
+                                            >
+                                                Forest (Green)
+                                            </button>
+                                            <button
+                                                onClick={() => setColorTheme('neutral')}
+                                                className={`px-4 py-2 rounded font-semibold ${
+                                                    colorTheme === 'neutral'
+                                                        ? 'bg-green-600 text-white'
+                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                                                }`}
+                                            >
+                                                Neutral (Gray)
+                                            </button>
+                                        </div>
+                                        <p className="text-gray-400 text-sm mt-2">Choose between colorful or grayscale theme</p>
+                                    </div>
+                                    
+                                    {/* Font Size with Live Preview */}
+                                    <div className="bg-gray-700 p-4 rounded-lg">
+                                        <label className="block text-sm font-semibold text-gray-200 mb-2">Ingredient Text Size</label>
+                                        <div className="flex gap-2 mb-3 flex-wrap">
+                                            <button
+                                                onClick={() => setFontSize('tiny')}
+                                                className={`px-3 py-2 rounded font-semibold text-sm ${
+                                                    fontSize === 'tiny'
+                                                        ? 'bg-green-600 text-white'
+                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                                                }`}
+                                            >
+                                                Tiny
+                                            </button>
+                                            <button
+                                                onClick={() => setFontSize('small')}
+                                                className={`px-3 py-2 rounded font-semibold text-sm ${
+                                                    fontSize === 'small'
+                                                        ? 'bg-green-600 text-white'
+                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                                                }`}
+                                            >
+                                                Small
+                                            </button>
+                                            <button
+                                                onClick={() => setFontSize('medium')}
+                                                className={`px-3 py-2 rounded font-semibold text-sm ${
+                                                    fontSize === 'medium'
+                                                        ? 'bg-green-600 text-white'
+                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                                                }`}
+                                            >
+                                                Medium
+                                            </button>
+                                            <button
+                                                onClick={() => setFontSize('large')}
+                                                className={`px-3 py-2 rounded font-semibold text-sm ${
+                                                    fontSize === 'large'
+                                                        ? 'bg-green-600 text-white'
+                                                        : 'bg-gray-600 text-gray-300 hover:bg-gray-500'
+                                                }`}
+                                            >
+                                                Large
+                                            </button>
+                                        </div>
+                                        {/* Live Preview */}
+                                        <div className="bg-gray-800 p-3 rounded border border-gray-600">
+                                            <p className="text-gray-500 text-xs mb-1">Preview:</p>
+                                            <div className={`${fontSize === 'tiny' ? 'text-xs' : fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-lg' : 'text-base'}`}>
+                                                <span className="text-green-400 font-medium">2 ½ cups</span>
+                                                <span className="text-gray-200 ml-2">flour</span>
+                                            </div>
+                                        </div>
+                                        <p className="text-gray-400 text-sm mt-2">Adjusts the size of ingredient text in scaled recipe output</p>
+                                    </div>
+                                </div>
                                 
                                 {/* Custom Conversions Section */}
                                 <div className="mb-8">
@@ -2356,34 +2483,51 @@
                                 </div>
 
                                 {showSaved && (
-                                    <div className="mb-4 p-4 bg-gray-700 rounded max-h-64 overflow-y-auto">
-                                        {savedRecipes.length === 0 ? (
-                                            <p className="text-gray-400">No saved recipes</p>
-                                        ) : (
-                                            savedRecipes.map(recipe => (
-                                                <div key={recipe.id} className="mb-2 p-2 bg-gray-600 rounded flex justify-between items-center">
-                                                    <div>
-                                                        <div className="font-bold">{recipe.name}</div>
-                                                        <div className="text-sm text-gray-400">{recipe.servings} servings</div>
-                                                    </div>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => loadRecipe(recipe)}
-                                                            className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-sm"
-                                                        >
-                                                            Load
-                                                        </button>
-                                                        <button
-                                                            onClick={() => deleteRecipe(recipe.id)}
-                                                            className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </div>
+                                    <>
+                                        {/* Warning banner */}
+                                        <div className="mb-3 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-700 border-opacity-50 rounded">
+                                            <div className="flex items-start gap-2">
+                                                <span className="text-yellow-500 text-lg">⚠️</span>
+                                                <div>
+                                                    <p className="text-yellow-200 text-sm font-semibold mb-1">Temporary Storage Only</p>
+                                                    <p className="text-yellow-300 text-xs">
+                                                        Saved recipes are stored in your browser and will be lost if you clear browser data, switch devices, or use a different browser. 
+                                                        Use this for quick comparisons during your current session only.
+                                                    </p>
                                                 </div>
-                                            ))
-                                        )}
-                                    </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Saved recipes list */}
+                                        <div className="mb-4 p-4 bg-gray-700 rounded max-h-64 overflow-y-auto">
+                                            {savedRecipes.length === 0 ? (
+                                                <p className="text-gray-400">No saved recipes</p>
+                                            ) : (
+                                                savedRecipes.map(recipe => (
+                                                    <div key={recipe.id} className="mb-2 p-2 bg-gray-600 rounded flex justify-between items-center">
+                                                        <div>
+                                                            <div className="font-bold">{recipe.name}</div>
+                                                            <div className="text-sm text-gray-400">{recipe.servings} servings</div>
+                                                        </div>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                onClick={() => loadRecipe(recipe)}
+                                                                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-sm"
+                                                            >
+                                                                Load
+                                                            </button>
+                                                            <button
+                                                                onClick={() => deleteRecipe(recipe.id)}
+                                                                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
+                                                            >
+                                                                Delete
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
+                                    </>
                                 )}
 
                                 <div className="flex justify-between items-center mb-2">
@@ -2538,12 +2682,12 @@
                                                             
                                                             <div className={`flex-1 min-w-0 ${isChecked ? 'opacity-40 line-through' : ''}`}>
                                                                 {ingredient.type === 'seasoning' ? (
-                                                                    <div className="text-base leading-relaxed">
+                                                                    <div className={`leading-relaxed ${fontSize === 'tiny' ? 'text-xs' : fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-lg' : 'text-base'}`}>
                                                                         <span className="text-gray-300">{ingredient.ingredient}</span>
                                                                         <span className="text-gray-500 ml-2 italic">to taste</span>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="text-base leading-relaxed">
+                                                                    <div className={`leading-relaxed ${fontSize === 'tiny' ? 'text-xs' : fontSize === 'small' ? 'text-sm' : fontSize === 'large' ? 'text-lg' : 'text-base'}`}>
                                                                         <span className="text-green-400 font-medium">
                                                                             {formatCompoundMeasurement(scaled)}
                                                                         </span>
