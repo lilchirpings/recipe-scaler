@@ -36,97 +36,85 @@
          * - LocalStorage for custom conversions and saved recipes
          * - Three main sections: Input, Scaler Output, Conversion Preferences
          * - Edit mode toggle for advanced controls
-         * 
-         * UNIT CONVERSION STRATEGY:
-         * - Volumes: Convert to teaspoons as base, then smart-convert for display
-         * - Weights: Convert to grams as base, then smart-convert for display
-         * - Counts: Keep as raw numbers (2 eggs, 3 onions)
-         * - Decision tree for display (see smartConvertVolume/Weight functions)
-         * 
-         * CUSTOM CONVERSIONS:
-         * - Bidirectional: "1 bulb ⇄ 12 cloves" works both ways
-         * - Smart display: <1 of original unit shows in smaller unit (½ bulb → 6 cloves)
-         * - Stored in localStorage as customConversions object
          *
          * ============================================================================
-         * PROFESSIONAL DECISION TREE IMPLEMENTATION
+         * 2-STAGE SCALING SYSTEM
          * ============================================================================
          * 
-         * This application implements an ultra-comprehensive professional decision
-         * tree for ingredient display based on ingredient classification and density.
+         * CORE PRINCIPLE: Normalize first, scale, then format.
+         * Never scale a recipe that still has mixed units.
          * 
-         * GLOBAL RULES:
-         * - All liquids stored in base unit: teaspoons (for US) or mL (metric)
-         * - All solids stored in base unit: grams
-         * - Ingredient classification determines conversion logic
-         * - User mode preferences affect display choices
+         * STAGE 1 — NORMALIZE EVERYTHING FIRST
+         * Before scaling, convert every ingredient into one base unit.
+         * Each ingredient is expressed as one number in one unit.
+         * 
+         *   Liquids → milliliters (mL) internally
+         *     • 1 tsp = 5 mL
+         *     • 1 tbsp = 15 mL  
+         *     • 1 cup = 240 mL
+         *     • 1 pint = 473 mL
+         *     • 1 quart = 946 mL
+         *     • 1 gallon = 3785 mL
+         * 
+         *   Dry ingredients → grams (g) internally
+         *     • Flour ≈ 120 g per cup
+         *     • White sugar ≈ 200 g per cup
+         *     • Brown sugar ≈ 220 g per cup (packed)
+         *     • Salt ≈ 18 g per tbsp
+         * 
+         *   Bulk solids (nuts, chips) → grams (g)
+         *   Meats → grams (or pounds)
+         * 
+         * STAGE 2 — FORMAT BACK INTO PRACTICAL KITCHEN UNITS
+         * Once scaled in grams or mL, convert back to natural kitchen units.
+         * Maximum 2 units in display (e.g., "2 gal + 1 cup" is fine).
+         * 
+         *   LIQUIDS (from mL):
+         *     • Under 15 mL → teaspoons
+         *     • 15–90 mL → tablespoons
+         *     • 90–500 mL → cups
+         *     • 500–2000 mL → cups or quarts
+         *     • 2000–8000 mL → quarts
+         *     • Over 8000 mL → gallons + cups if needed
+         * 
+         *   DRY POWDERS (from grams):
+         *     • Under 10 g → teaspoons
+         *     • 10–50 g → tablespoons
+         *     • 50–300 g → cups
+         *     • 300–2000 g → pounds
+         *     • Over 2000 g → pounds + ounces
+         * 
+         *   BULK SOLIDS - nuts, chocolate, etc. (from grams):
+         *     • Under 50 g → tablespoons
+         *     • 50–200 g → cups
+         *     • 200–1500 g → pounds
+         *     • Over 1500 g → pounds + ounces
+         * 
+         *   MEAT (from grams):
+         *     • Under 200 g → grams
+         *     • 200–2000 g → pounds
+         *     • Over 2000 g → pounds + ounces
          * 
          * INGREDIENT CLASSIFICATIONS:
          * 1. Liquids: water, milk, juice, broth, wine, etc.
-         * 2. Dry Powdered Solids: flour, cocoa, powdered sugar, cornstarch
-         * 3. Granular Solids: sugar, salt, rice, lentils, quinoa
-         * 4. Leafy/Herb Solids: parsley, cilantro, basil, oregano, mint
-         * 5. Fats: butter, shortening, lard (with special "stick" handling)
-         * 6. Viscous: honey, molasses, syrup (stay in tbsp/cups)
-         * 7. Strong Spices: clove, nutmeg, cayenne (never convert to cups)
-         * 8. Countable: eggs, cloves, carrots, shrimp (whole units)
-         * 
-         * DENSITY TABLE:
-         * - Comprehensive density mappings (g per cup) for volume-weight conversion
-         * - Used when converting weight measurements to volume for display
-         * - Falls back to sensible defaults based on classification
-         * 
-         * LIQUID CONVERSION THRESHOLDS (implemented in smartConvertVolume):
-         * - < 0.2 mL → "a drop"
-         * - < 0.6 mL → "a dash"
-         * - < ⅛ tsp → "a pinch"
-         * - < 60 mL (¼ cup) → teaspoons (rounded to ¼ tsp)
-         * - 60-240 mL (¼-1 cup) → tablespoons (rounded to ¼ tbsp)
-         * - 240-960 mL (1-4 cups) → cups (rounded to ¼ or ⅓ cup)
-         * - 960-1920 mL (4-8 cups) → quarts + cups
-         * - 1920+ mL (8+ cups) → quarts
-         * - Professional mode: 4000+ mL → liters with 2 decimals
-         * 
-         * SOLID CONVERSION THRESHOLDS (implemented in smartConvertWeight):
-         * - < 1g → "a pinch"
-         * - 1-15g → teaspoons (using density, ~5g/tsp average)
-         * - 15-100g → tablespoons (using density, ~15g/tbsp average)
-         * - 100-500g → cups (using density, if "clean" fractions)
-         * - 500g+ → cups if clean, otherwise grams or kg+g
-         * 
-         * BUTTER/FAT SPECIAL HANDLING:
-         * - < 14g → teaspoons
-         * - 14-112g → tablespoons
-         * - 112g (¼ lb) → "1 stick" (US convention)
-         * - 224g (½ lb) → "2 sticks" or "1 cup"
-         * - 200g+ → cups or grams based on preference
-         * 
-         * COUNTABLE ITEMS:
-         * - Eggs: Always whole eggs
-         * - Fractional eggs: 0.5-1 → "1 egg", < 0.5 → "1 egg white"
-         * - Garlic cloves: Count until > 20g, then grams
-         * - Vegetables: Whole count unless precision needed
+         * 2. Dry Powders: flour, cocoa, powdered sugar, cornstarch
+         * 3. Granular: sugar, salt, rice, lentils, quinoa
+         * 4. Leafy/Herbs: parsley, cilantro, basil, oregano, mint
+         * 5. Fats: butter, shortening, lard
+         * 6. Viscous: honey, molasses, syrup
+         * 7. Strong Spices: clove, nutmeg, cayenne
+         * 8. Bulk Solids: nuts, chocolate chips, chopped items
+         * 9. Meat: chicken, beef, pork, etc.
+         * 10. Countable: eggs, cloves, carrots, shrimp
          * 
          * ROUNDING RULES:
          * - Teaspoons: nearest ¼ tsp
          * - Tablespoons: nearest ¼ tbsp
          * - Cups: nearest ¼ or ⅓ cup (whichever closer)
-         * - Quarts: nearest ¼ quart
-         * - Milliliters: whole numbers < 100mL, nearest 5mL above
-         * - Grams: whole numbers (except baking mode: 0.1g for < 10g)
-         * - Liters: 2 decimals
-         * 
-         * SPECIAL OVERRIDES:
-         * - Strong spices (clove, nutmeg, cayenne): Never convert to cups
-         * - Variable density (shredded cheese, nuts): Use grams unless "clean"
-         * - Honey/molasses: Stay in tbsp/cups (not grams) unless metric mode
-         * 
-         * FUTURE ENHANCEMENTS:
-         * - Bakery percentage mode (all solids in grams, relative to flour)
-         * - Professional mode flag (prefer mL/g over volume measurements)
-         * - "Stick of butter" display for 112g butter
-         * - Egg white/yolk splitting for fractional eggs
-         * - More granular density adjustments per ingredient
+         * - Pounds: nearest ¼ lb
+         * - Milliliters: whole numbers
+         * - Grams: whole numbers
+         * - Liters/Kilograms: 1 decimal place
          * 
          * ============================================================================
          */
@@ -148,6 +136,7 @@
             'drop': 0.01,    // ~0.05 mL, roughly 1/100 tsp
             'drops': 0.01,
             'tbsp': 3,
+            'tbsps': 3,
             'tablespoon': 3,
             'tablespoons': 3,
             'floz': 6,
@@ -160,12 +149,15 @@
             'pint': 96,
             'pints': 96,
             'pt': 96,
+            'pts': 96,
             'quart': 192,
             'quarts': 192,
             'qt': 192,
+            'qts': 192,
             'gallon': 768,
             'gallons': 768,
             'gal': 768,
+            'gals': 768,
             // Metric
             'ml': 0.202884,
             'milliliter': 0.202884,
@@ -329,263 +321,385 @@
         };
 
         // ============================================================================
-        // SMART UNIT CONVERSION FUNCTIONS
+        // 2-STAGE SCALING SYSTEM
         // ============================================================================
-        // These functions implement a chef-friendly decision tree for displaying units
-        // Decision tree prevents ugly decimals like "1.04125 cups" or "2.69 tbsp"
+        // Stage 1: Normalize to base units (mL for liquids, g for solids)
+        // Stage 2: Format back into practical kitchen units based on quantity
+        //
+        // Core Principle: Normalize first, scale, then format.
+        // Never display mixed units like "1 gallon + 14 cups"
+        // Maximum 2 units in display (e.g., "2 lb + 4 oz" is fine)
         
-        /* PROFESSIONAL VOLUME CONVERSION DECISION TREE:
-         * Implements comprehensive liquid measurement display logic
-         * All input in teaspoons, converts to best display unit
-         * 
-         * Thresholds:
-         * - < 0.04 tsp (0.2 mL) → "a drop"
-         * - < 0.125 tsp (0.6 mL) → "a dash"  
-         * - < 0.125 tsp → "a pinch"
-         * - < 12 tsp (¼ cup / 60mL) → teaspoons
-         * - 12-48 tsp (¼-1 cup / 60-240mL) → tablespoons
-         * - 48-192 tsp (1-4 cups / 240-960mL) → cups
-         * - 192-384 tsp (4-8 cups / 960-1920mL) → quarts + cups
-         * - 384+ tsp (8+ cups / 1920+mL) → quarts
-         * 
-         * Metric mode: mL under 250, then L with 2 decimals
+        /* STAGE 2: FORMAT LIQUIDS (from mL)
+         * Thresholds for US:
+         * - Under 15 mL → teaspoons
+         * - 15–90 mL → tablespoons  
+         * - 90–500 mL → cups
+         * - 500–2000 mL → pints or quarts
+         * - 2000–8000 mL → quarts
+         * - Over 8000 mL → gallons + cups if needed
          */
-        const smartConvertVolume = (tsp, useMetric, ingredientName = '') => {
+        const smartConvertVolume = (tsp, useMetric, ingredientName = '', rules = {}) => {
+            // Convert from tsp (internal base) to mL (Stage 1 base)
+            const ml = tsp * 4.92892; // 1 tsp = 4.92892 mL
+            
+            // Default rules
+            const noFractionalQuarts = rules.noFractionalQuarts !== false; // default true
+            const noFractionalGallons = rules.noFractionalGallons !== false; // default true
+            
             if (useMetric) {
-                const ml = tsp / 0.202884;
-                
-                // Step 1: Very small amounts
-                if (ml < 0.2) {
-                    return { value: 0, unit: 'drop' };
-                }
-                
-                // Step 2: If < 1 mL → "a dash" or "a pinch"
+                // Metric: display in mL or L
                 if (ml < 1) {
-                    if (ml < 0.6) {
-                        return { value: 0, unit: 'dash' };
-                    }
                     return { value: 0, unit: 'pinch' };
                 }
-                
-                // Step 3: 1-250 mL → display in mL
-                if (ml < 250) {
+                if (ml < 1000) {
                     return { value: Math.round(ml), unit: 'ml' };
                 }
-                
-                // Step 4: >= 250 mL → convert to L with 2 decimals
-                if (ml >= 1000) {
-                    const liters = Math.floor(ml / 1000);
-                    const remainingMl = Math.round(ml - (liters * 1000));
-                    if (remainingMl >= 10) {
-                        return { value: liters, unit: 'L', remainder: remainingMl, remainderUnit: 'ml' };
-                    }
-                    return { value: Math.round(ml / 1000 * 100) / 100, unit: 'L' };
+                // >= 1000 mL: use liters
+                const liters = ml / 1000;
+                if (liters < 10) {
+                    return { value: Math.round(liters * 10) / 10, unit: 'L' };
                 }
-                return { value: Math.round(ml / 1000 * 100) / 100, unit: 'L' };
-            } else {
-                // Decision tree for US measurements
-                
-                // Step 1: Convert to cups for context
-                const cups = tsp / 48;
-                const ml = tsp / 0.202884; // Also calculate mL for special cases
-                
-                // Step 1a: Very small amounts
-                if (ml < 0.2) {
-                    return { value: 0, unit: 'drop' };
-                }
-                
-                // Step 1b: Dash (slightly more than a drop, less than pinch)
-                if (tsp < 0.125 && ml >= 0.2 && ml < 0.6) {
-                    return { value: 0, unit: 'dash' };
-                }
-                
-                // Step 2: Pinch (less than ⅛ tsp)
-                if (tsp < 0.125) {
+                return { value: Math.round(liters), unit: 'L' };
+            }
+            
+            // US Customary formatting
+            
+            // Under 15 mL → teaspoons
+            if (ml < 15) {
+                if (ml < 0.5) {
                     return { value: 0, unit: 'pinch' };
                 }
-                
-                // Step 3: Less than ¼ cup (12 tsp) → teaspoons, round to nearest ¼ tsp
-                if (cups < 0.25) {
-                    const roundedTsp = Math.round(tsp * 4) / 4;
-                    return { value: roundedTsp, unit: 'tsp' };
+                const tspVal = ml / 4.92892;
+                const rounded = Math.round(tspVal * 4) / 4; // nearest ¼ tsp
+                return { value: rounded, unit: 'tsp' };
+            }
+            
+            // 15–90 mL → tablespoons
+            if (ml < 90) {
+                const tbsp = ml / 14.787;
+                const rounded = Math.round(tbsp * 4) / 4; // nearest ¼ tbsp
+                return { value: rounded, unit: 'tbsp' };
+            }
+            
+            // 90–500 mL → cups
+            if (ml < 500) {
+                const cups = ml / 240;
+                // Round to nearest ¼ or ⅓ cup (whichever is closer)
+                const roundedQuarter = Math.round(cups * 4) / 4;
+                const roundedThird = Math.round(cups * 3) / 3;
+                const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird) 
+                    ? roundedQuarter : roundedThird;
+                return { value: rounded, unit: 'cup' };
+            }
+            
+            // 500–2000 mL → cups or quarts
+            if (ml < 2000) {
+                const cups = ml / 240;
+                if (cups <= 4) {
+                    const rounded = Math.round(cups * 4) / 4;
+                    return { value: rounded, unit: 'cup' };
                 }
+                // Use quarts for > 4 cups
+                const quarts = ml / 946;
                 
-                // Step 4: Between ¼ cup and 1 cup → tablespoons, round to nearest ¼ tbsp
-                if (cups >= 0.25 && cups < 1) {
-                    const tbsp = tsp / 3;
-                    const roundedTbsp = Math.round(tbsp * 4) / 4;
-                    return { value: roundedTbsp, unit: 'tbsp' };
-                }
-                
-                // Step 5: 8 cups or more → quarts, round to nearest ¼ quart
-                if (cups >= 8) {
-                    const quarts = cups / 4;
-                    const roundedQuarts = Math.round(quarts * 4) / 4;
-                    return { value: roundedQuarts, unit: 'qt' };
-                }
-                
-                // Step 6: Between 4 and 8 cups → quarts + cups if remainder awkward
-                if (cups >= 4 && cups < 8) {
-                    const quarts = Math.floor(cups / 4);
-                    const remainingCups = cups - (quarts * 4);
+                if (noFractionalQuarts) {
+                    // Never show fractional quarts - always use qt + cups
+                    const wholeQuarts = Math.floor(quarts);
+                    const remainingMl = ml - (wholeQuarts * 946);
+                    const remainingCups = remainingMl / 240;
+                    const roundedCups = Math.round(remainingCups * 4) / 4;
                     
-                    // Round remaining cups to nearest ¼ cup
-                    const roundedRemainingCups = Math.round(remainingCups * 4) / 4;
-                    
-                    // If remaining cups is awkward (less than ¼ cup), convert to tbsp/tsp
-                    if (roundedRemainingCups > 0 && roundedRemainingCups < 0.25) {
-                        const remainingTsp = remainingCups * 48;
-                        if (remainingTsp >= 3) {
-                            const tbsp = Math.round(remainingTsp / 3 * 4) / 4;
-                            return { value: quarts, unit: 'qt', remainder: tbsp, remainderUnit: 'tbsp' };
-                        } else {
-                            const roundedTsp = Math.round(remainingTsp * 4) / 4;
-                            return { value: quarts, unit: 'qt', remainder: roundedTsp, remainderUnit: 'tsp' };
-                        }
+                    if (wholeQuarts === 0) {
+                        return { value: roundedCups, unit: 'cup' };
                     }
-                    
-                    // Otherwise show quarts + cups if cups >= ¼
-                    if (roundedRemainingCups >= 0.25) {
-                        return { value: quarts, unit: 'qt', remainder: roundedRemainingCups, remainderUnit: 'cup' };
+                    if (roundedCups >= 0.25) {
+                        return { value: wholeQuarts, unit: 'qt', remainder: roundedCups, remainderUnit: 'cup' };
                     }
+                    return { value: wholeQuarts, unit: 'qt' };
+                } else {
+                    // Allow fractional quarts
+                    const rounded = Math.round(quarts * 4) / 4;
+                    return { value: rounded, unit: 'qt' };
+                }
+            }
+            
+            // 2000–8000 mL → quarts (with no-fractional rule)
+            if (ml < 8000) {
+                const quarts = ml / 946;
+                
+                if (noFractionalQuarts) {
+                    const wholeQuarts = Math.floor(quarts);
+                    const remainingMl = ml - (wholeQuarts * 946);
+                    const remainingCups = remainingMl / 240;
+                    const roundedCups = Math.round(remainingCups * 4) / 4;
                     
-                    // Just quarts if no significant remainder
-                    return { value: quarts, unit: 'qt' };
+                    if (roundedCups >= 0.25) {
+                        return { value: wholeQuarts, unit: 'qt', remainder: roundedCups, remainderUnit: 'cup' };
+                    }
+                    return { value: wholeQuarts, unit: 'qt' };
+                } else {
+                    const rounded = Math.round(quarts * 4) / 4;
+                    return { value: rounded, unit: 'qt' };
+                }
+            }
+            
+            // Over 8000 mL → gallons (with no-fractional rule)
+            const gallons = ml / 3785;
+            
+            if (noFractionalGallons) {
+                const wholeGallons = Math.floor(gallons);
+                const remainingMl = ml - (wholeGallons * 3785);
+                
+                // Remainder as quarts or cups
+                const remainingQuarts = remainingMl / 946;
+                if (remainingQuarts >= 1 && noFractionalQuarts) {
+                    const wholeRemainingQuarts = Math.floor(remainingQuarts);
+                    const remainingAfterQuarts = remainingMl - (wholeRemainingQuarts * 946);
+                    const remainingCups = remainingAfterQuarts / 240;
+                    const roundedCups = Math.round(remainingCups * 4) / 4;
+                    
+                    // gal + qt (skip cups for simplicity at this scale)
+                    if (wholeRemainingQuarts > 0) {
+                        return { value: wholeGallons, unit: 'gal', remainder: wholeRemainingQuarts, remainderUnit: 'qt' };
+                    }
                 }
                 
-                // Step 4: Between 1 and 4 cups → display in cups
-                // Round to nearest ¼ cup or ⅓ cup (whichever is closer)
-                const roundedQuarterCup = Math.round(cups * 4) / 4;
-                const roundedThirdCup = Math.round(cups * 3) / 3;
-                
-                // Choose whichever is closer to the original value
-                const quarterDiff = Math.abs(cups - roundedQuarterCup);
-                const thirdDiff = Math.abs(cups - roundedThirdCup);
-                
-                const roundedCups = thirdDiff < quarterDiff ? roundedThirdCup : roundedQuarterCup;
-                return { value: roundedCups, unit: 'cup' };
+                const remainingCups = remainingMl / 240;
+                const roundedCups = Math.round(remainingCups * 4) / 4;
+                if (roundedCups >= 0.5) {
+                    return { value: wholeGallons, unit: 'gal', remainder: roundedCups, remainderUnit: 'cup' };
+                }
+                return { value: wholeGallons, unit: 'gal' };
+            } else {
+                const rounded = Math.round(gallons * 4) / 4;
+                return { value: rounded, unit: 'gal' };
             }
         };
 
-        /* WEIGHT CONVERSION DECISION TREE FOR SOLIDS:
-         * 1. If < 1g → "a pinch"
-         * 2. If < 15g → display in teaspoons (approximation: 1 tsp ≈ 5g for most dry goods)
-         * 3. If 15-100g → display in tablespoons (1 tbsp ≈ 15g)
-         * 4. If 100-500g → display in cups (1 cup ≈ 120-130g, varies by ingredient)
-         * 5. If 500g+ → display in cups if clean, otherwise grams
-         * 
-         * Note: These are approximations since density varies (flour vs sugar vs salt)
-         * For imperial mode, we'll use similar logic with oz as base
+        /* STAGE 2: FORMAT DRY POWDERS (from grams)
+         * For flour, sugar, salt, powders
+         * Thresholds for US:
+         * - Under 10 g → teaspoons
+         * - 10–50 g → tablespoons
+         * - 50–300 g → cups
+         * - 300–2000 g → pounds
+         * - Over 2000 g → pounds + ounces
          */
-        const smartConvertWeight = (g, useMetric) => {
+        const formatDryPowder = (g, useMetric, density = 125, rules = {}) => {
+            const noFractionalPounds = rules.noFractionalPounds || false;
+            
             if (useMetric) {
-                // Metric decision tree for solids
-                
-                // Step 1: < 1g → "a pinch"
-                if (g < 1) {
-                    return { value: 0, unit: 'pinch' };
+                if (g < 1) return { value: 0, unit: 'pinch' };
+                if (g < 1000) return { value: Math.round(g), unit: 'g' };
+                return { value: Math.round(g / 100) / 10, unit: 'kg' };
+            }
+            
+            // Under 10g → teaspoons (approx 3g per tsp for powders)
+            if (g < 10) {
+                if (g < 1) return { value: 0, unit: 'pinch' };
+                const tsp = g / 3;
+                return { value: Math.round(tsp * 4) / 4, unit: 'tsp' };
+            }
+            
+            // 10–50g → tablespoons (approx 9g per tbsp)
+            if (g < 50) {
+                const tbsp = g / 9;
+                return { value: Math.round(tbsp * 4) / 4, unit: 'tbsp' };
+            }
+            
+            // 50–300g → cups (use density)
+            if (g < 300) {
+                const cups = g / density;
+                const roundedQuarter = Math.round(cups * 4) / 4;
+                const roundedThird = Math.round(cups * 3) / 3;
+                const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird)
+                    ? roundedQuarter : roundedThird;
+                return { value: rounded, unit: 'cup' };
+            }
+            
+            // 300g+ → pounds (with optional no-fractional rule)
+            const lb = g / 453.592;
+            
+            if (noFractionalPounds || g >= 2000) {
+                // Always use lb + oz for large amounts or when rule is enabled
+                const wholeLb = Math.floor(lb);
+                const remainingG = g - (wholeLb * 453.592);
+                const oz = remainingG / 28.3495;
+                if (oz >= 1) {
+                    return { value: wholeLb, unit: 'lb', remainder: Math.round(oz), remainderUnit: 'oz' };
                 }
-                
-                // Step 2: < 15g → display in teaspoons (approximate: 1 tsp ≈ 5g)
-                if (g < 15) {
-                    const tsp = g / 5; // Approximate conversion
-                    const roundedTsp = Math.round(tsp * 4) / 4; // Round to nearest ¼ tsp
-                    return { value: roundedTsp, unit: 'tsp' };
+                if (wholeLb > 0) {
+                    return { value: wholeLb, unit: 'lb' };
                 }
-                
-                // Step 3: 15-100g → display in tablespoons (1 tbsp ≈ 15g)
-                if (g < 100) {
-                    const tbsp = g / 15;
-                    const roundedTbsp = Math.round(tbsp * 4) / 4; // Round to nearest ¼ tbsp
-                    return { value: roundedTbsp, unit: 'tbsp' };
+                // Less than 1 lb, show in oz
+                return { value: Math.round(g / 28.3495), unit: 'oz' };
+            }
+            
+            // Allow fractional pounds
+            return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+        };
+
+        /* STAGE 2: FORMAT BULK SOLIDS (from grams)
+         * For nuts, chocolate chips, chopped items
+         * Thresholds for US:
+         * - Under 50 g → tablespoons
+         * - 50–200 g → cups
+         * - 200–1500 g → pounds
+         * - Over 1500 g → pounds + ounces
+         */
+        const formatBulkSolid = (g, useMetric, density = 150, rules = {}) => {
+            const noFractionalPounds = rules.noFractionalPounds || false;
+            
+            if (useMetric) {
+                if (g < 1000) return { value: Math.round(g), unit: 'g' };
+                return { value: Math.round(g / 100) / 10, unit: 'kg' };
+            }
+            
+            // Under 50g → tablespoons
+            if (g < 50) {
+                const tbsp = g / 15;
+                return { value: Math.round(tbsp * 4) / 4, unit: 'tbsp' };
+            }
+            
+            // 50–200g → cups
+            if (g < 200) {
+                const cups = g / density;
+                const roundedQuarter = Math.round(cups * 4) / 4;
+                const roundedThird = Math.round(cups * 3) / 3;
+                const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird)
+                    ? roundedQuarter : roundedThird;
+                return { value: rounded, unit: 'cup' };
+            }
+            
+            // 200g+ → pounds
+            const lb = g / 453.592;
+            
+            if (noFractionalPounds || g >= 1500) {
+                const wholeLb = Math.floor(lb);
+                const remainingG = g - (wholeLb * 453.592);
+                const oz = remainingG / 28.3495;
+                if (oz >= 1) {
+                    return { value: wholeLb, unit: 'lb', remainder: Math.round(oz), remainderUnit: 'oz' };
                 }
-                
-                // Step 4: 100-500g → display in cups (1 cup ≈ 125g average for dry goods)
-                if (g < 500) {
-                    const cups = g / 125;
-                    // Round to nearest ¼ or ⅓ cup (whichever is closer)
-                    const roundedQuarterCup = Math.round(cups * 4) / 4;
-                    const roundedThirdCup = Math.round(cups * 3) / 3;
-                    const quarterDiff = Math.abs(cups - roundedQuarterCup);
-                    const thirdDiff = Math.abs(cups - roundedThirdCup);
-                    const roundedCups = thirdDiff < quarterDiff ? roundedThirdCup : roundedQuarterCup;
-                    return { value: roundedCups, unit: 'cup' };
+                if (wholeLb > 0) {
+                    return { value: wholeLb, unit: 'lb' };
                 }
-                
-                // Step 5: 500g+ → display in cups if clean, otherwise grams
-                const cups = g / 125;
-                const roundedCups = Math.round(cups * 4) / 4;
-                // If the cup conversion is "clean" (close to a nice fraction), use it
-                if (Math.abs(cups - roundedCups) < 0.1) {
-                    return { value: roundedCups, unit: 'cup' };
-                }
-                
-                // Otherwise use kg + g for large amounts
-                if (g >= 1000) {
-                    const kg = Math.floor(g / 1000);
-                    const remainingG = Math.round(g - (kg * 1000));
-                    if (remainingG >= 50) {
-                        return { value: kg, unit: 'kg', remainder: remainingG, remainderUnit: 'g' };
-                    }
-                    return { value: g / 1000, unit: 'kg' };
-                }
-                
+                return { value: Math.round(g / 28.3495), unit: 'oz' };
+            }
+            
+            return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+        };
+
+        /* STAGE 2: FORMAT MEAT (from grams)
+         * Thresholds for US:
+         * - Under 200 g → grams (too small for lb)
+         * - 200–500 g → about ½–1 lb
+         * - 500–2000 g → pounds
+         * - Over 2000 g → pounds + ounces
+         */
+        const formatMeat = (g, useMetric, rules = {}) => {
+            const noFractionalPounds = rules.noFractionalPounds || false;
+            
+            if (useMetric) {
+                if (g < 250) return { value: Math.round(g), unit: 'g' };
+                if (g < 1000) return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                return { value: Math.round(g / 100) / 10, unit: 'kg' };
+            }
+            
+            // Under 200g → just show grams (awkward in lb)
+            if (g < 200) {
                 return { value: Math.round(g), unit: 'g' };
-                
+            }
+            
+            // 200g+ → pounds
+            const lb = g / 453.592;
+            
+            if (noFractionalPounds || g >= 2000) {
+                const wholeLb = Math.floor(lb);
+                const remainingG = g - (wholeLb * 453.592);
+                const oz = remainingG / 28.3495;
+                if (oz >= 1) {
+                    return { value: wholeLb, unit: 'lb', remainder: Math.round(oz), remainderUnit: 'oz' };
+                }
+                if (wholeLb > 0) {
+                    return { value: wholeLb, unit: 'lb' };
+                }
+                return { value: Math.round(g / 28.3495), unit: 'oz' };
+            }
+            
+            return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+        };
+
+        /* SMART WEIGHT CONVERSION
+         * Determines ingredient type and routes to appropriate formatter
+         * Input: grams (base unit from Stage 1)
+         * Unknown ingredients default to simple weight display (g or oz)
+         */
+        const smartConvertWeight = (g, useMetric, ingredientName = '', rules = {}) => {
+            const lower = ingredientName.toLowerCase();
+            
+            // Classify ingredient
+            const classification = classifyIngredient(ingredientName);
+            const density = getIngredientDensity(ingredientName);
+            
+            // Route to appropriate formatter based on classification
+            if (classification === 'dryPowders' || classification === 'granular') {
+                return formatDryPowder(g, useMetric, density, rules);
+            }
+            
+            if (classification === 'leafyHerbs' || classification === 'strongSpices') {
+                // Herbs and spices: always small amounts, use tsp/tbsp
+                return formatDryPowder(g, useMetric, density, rules);
+            }
+            
+            if (classification === 'fats') {
+                // Fats like butter - use dry powder logic (works well for tbsp/cups)
+                return formatDryPowder(g, useMetric, density, rules);
+            }
+            
+            // Check for meat keywords
+            if (lower.includes('chicken') || lower.includes('beef') || lower.includes('pork') ||
+                lower.includes('lamb') || lower.includes('turkey') || lower.includes('meat') ||
+                lower.includes('steak') || lower.includes('roast') || lower.includes('ground') ||
+                lower.includes('sausage') || lower.includes('bacon') || lower.includes('ham')) {
+                return formatMeat(g, useMetric, rules);
+            }
+            
+            // Check for bulk solid keywords (nuts, chips, etc.)
+            if (lower.includes('nut') || lower.includes('chip') || lower.includes('chopped') ||
+                lower.includes('diced') || lower.includes('almond') || lower.includes('walnut') ||
+                lower.includes('pecan') || lower.includes('cashew') || lower.includes('raisin') ||
+                lower.includes('cranberr') || lower.includes('chocolate') || lower.includes('seed')) {
+                return formatBulkSolid(g, useMetric, density, rules);
+            }
+            
+            // UNKNOWN INGREDIENT: Safe fallback - just show weight directly
+            const noFractionalPounds = rules.noFractionalPounds || false;
+            
+            if (useMetric) {
+                if (g < 1) return { value: 0, unit: 'pinch' };
+                if (g < 1000) return { value: Math.round(g), unit: 'g' };
+                return { value: Math.round(g / 100) / 10, unit: 'kg' };
             } else {
-                // Imperial mode - similar logic but using oz as base
-                
-                // Step 1: < 0.035 oz (≈1g) → "a pinch"
-                if (g < 1) {
-                    return { value: 0, unit: 'pinch' };
-                }
-                
+                // Imperial: show in oz for small amounts, lb for large
+                if (g < 1) return { value: 0, unit: 'pinch' };
                 const oz = g / 28.3495;
-                
-                // Step 2: < 0.5 oz (≈15g) → teaspoons
-                if (oz < 0.5) {
-                    const tsp = g / 5;
-                    const roundedTsp = Math.round(tsp * 4) / 4;
-                    return { value: roundedTsp, unit: 'tsp' };
+                if (oz < 16) {
+                    return { value: Math.round(oz * 4) / 4, unit: 'oz' };
                 }
+                const lb = g / 453.592;
                 
-                // Step 3: 0.5-3.5 oz (≈15-100g) → tablespoons
-                if (oz < 3.5) {
-                    const tbsp = g / 15;
-                    const roundedTbsp = Math.round(tbsp * 4) / 4;
-                    return { value: roundedTbsp, unit: 'tbsp' };
-                }
-                
-                // Step 4: 3.5-17.5 oz (≈100-500g) → cups
-                if (oz < 17.5) {
-                    const cups = g / 125;
-                    const roundedQuarterCup = Math.round(cups * 4) / 4;
-                    const roundedThirdCup = Math.round(cups * 3) / 3;
-                    const quarterDiff = Math.abs(cups - roundedQuarterCup);
-                    const thirdDiff = Math.abs(cups - roundedThirdCup);
-                    const roundedCups = thirdDiff < quarterDiff ? roundedThirdCup : roundedQuarterCup;
-                    return { value: roundedCups, unit: 'cup' };
-                }
-                
-                // Step 5: >= 17.5 oz → cups if clean, otherwise oz/lb
-                const cups = g / 125;
-                const roundedCups = Math.round(cups * 4) / 4;
-                if (Math.abs(cups - roundedCups) < 0.1) {
-                    return { value: roundedCups, unit: 'cup' };
-                }
-                
-                // Use lb + oz for large amounts
-                if (g >= 453.592) {
-                    const lb = Math.floor(g / 453.592);
-                    const remainingG = g - (lb * 453.592);
-                    if (remainingG >= 28.3495) {
-                        const remainingOz = Math.round(remainingG / 28.3495);
-                        return { value: lb, unit: 'lb', remainder: remainingOz, remainderUnit: 'oz' };
+                if (noFractionalPounds) {
+                    const wholeLb = Math.floor(lb);
+                    const remainingOz = (g - wholeLb * 453.592) / 28.3495;
+                    if (remainingOz >= 1) {
+                        return { value: wholeLb, unit: 'lb', remainder: Math.round(remainingOz), remainderUnit: 'oz' };
                     }
-                    return { value: g / 453.592, unit: 'lb' };
+                    return { value: wholeLb, unit: 'lb' };
                 }
                 
-                return { value: Math.round(oz * 10) / 10, unit: 'oz' };
+                return { value: Math.round(lb * 4) / 4, unit: 'lb' };
             }
         };
 
@@ -1356,6 +1470,14 @@
             const [newConversionNote, setNewConversionNote] = useState(''); // Form: optional note
             const [editingKey, setEditingKey] = useState(null); // Which conversion is being edited
             const [editValues, setEditValues] = useState({ to: '', ratio: '', note: '' }); // Edit form values
+            
+            // Display rules for how to format scaled measurements
+            const [displayRules, setDisplayRules] = useState({
+                noFractionalQuarts: true,    // 2.5 qt → 2 qt + 2 cups
+                noFractionalGallons: true,   // 1.5 gal → 1 gal + 2 qt
+                noFractionalPounds: false,   // 2.5 lb → 2 lb + 8 oz (optional)
+                roundEggsUp: true,           // 2.3 eggs → 3 eggs
+            });
 
             // Common ambiguous items that should show warnings
             const AMBIGUOUS_ITEMS = {
@@ -1423,6 +1545,12 @@
                 const saved = localStorage.getItem('savedRecipes');
                 if (saved) {
                     setSavedRecipes(JSON.parse(saved));
+                }
+                
+                // Load display rules
+                const rules = localStorage.getItem('displayRules');
+                if (rules) {
+                    setDisplayRules(JSON.parse(rules));
                 }
                 
                 const conversions = localStorage.getItem('customConversions');
@@ -1529,6 +1657,12 @@
                 setNewConversionTo('');
                 setNewConversionRatio('');
                 setNewConversionNote('');
+            };
+            
+            const updateDisplayRule = (rule, value) => {
+                const updated = { ...displayRules, [rule]: value };
+                setDisplayRules(updated);
+                localStorage.setItem('displayRules', JSON.stringify(updated));
             };
 
             const deleteCustomConversion = (key) => {
@@ -1706,17 +1840,29 @@
                         const conversionFactor = VOLUME_CONVERSIONS[overrideUnit];
                         return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
                     }
-                    return smartConvertVolume(scaledBaseValue, useMetric);
+                    return smartConvertVolume(scaledBaseValue, useMetric, ingredient.ingredient, displayRules);
                 } else if (ingredient.type === 'weight') {
                     if (overrideUnit) {
                         // Convert to specific unit
                         const conversionFactor = WEIGHT_CONVERSIONS[overrideUnit];
                         return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
                     }
-                    return smartConvertWeight(scaledBaseValue, useMetric);
+                    return smartConvertWeight(scaledBaseValue, useMetric, ingredient.ingredient, displayRules);
                 } else if (ingredient.type === 'count') {
                     // For count items, just scale the number
-                    return { value: scaledBaseValue, unit: '' };
+                    let value = scaledBaseValue;
+                    
+                    // Apply roundEggsUp rule for eggs
+                    if (displayRules.roundEggsUp && ingredient.ingredient.toLowerCase().includes('egg')) {
+                        const decimal = value % 1;
+                        if (decimal > 0.25) {
+                            value = Math.ceil(value);
+                        } else if (decimal > 0) {
+                            value = Math.floor(value);
+                        }
+                    }
+                    
+                    return { value: value, unit: '' };
                 }
             };
 
@@ -1734,10 +1880,10 @@
                 // Use the same conversion logic based on type
                 if (alternative.type === 'volume') {
                     const scaledBaseValue = alternative.baseValue * scaleFactor;
-                    return smartConvertVolume(scaledBaseValue, useMetric);
+                    return smartConvertVolume(scaledBaseValue, useMetric, alternative.ingredient || '', displayRules);
                 } else if (alternative.type === 'weight') {
                     const scaledBaseValue = alternative.baseValue * scaleFactor;
-                    return smartConvertWeight(scaledBaseValue, useMetric);
+                    return smartConvertWeight(scaledBaseValue, useMetric, alternative.ingredient || '', displayRules);
                 } else if (alternative.type === 'count') {
                     return { value: scaledQuantity, unit: '' };
                 } else {
@@ -2191,6 +2337,68 @@
                                                 When you paste recipes with these terms, the app will warn you they're ambiguous and prompt you to define them here.
                                             </p>
                                         )}
+                                    </div>
+                                </div>
+                                
+                                {/* Display Rules Section */}
+                                <div className="mb-8">
+                                    <h3 className="text-xl font-bold text-green-400 mb-3">Display Rules</h3>
+                                    <p className="text-gray-400 mb-4">
+                                        Control how scaled measurements are formatted. These rules help keep outputs practical for kitchen use.
+                                    </p>
+                                    
+                                    <div className="bg-gray-700 p-6 rounded-lg space-y-4">
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={displayRules.noFractionalQuarts}
+                                                onChange={(e) => updateDisplayRule('noFractionalQuarts', e.target.checked)}
+                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                            />
+                                            <div>
+                                                <span className="text-gray-200 font-medium">No fractional quarts</span>
+                                                <p className="text-gray-400 text-sm">Show "2 qt + 2 cups" instead of "2½ qt"</p>
+                                            </div>
+                                        </label>
+                                        
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={displayRules.noFractionalGallons}
+                                                onChange={(e) => updateDisplayRule('noFractionalGallons', e.target.checked)}
+                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                            />
+                                            <div>
+                                                <span className="text-gray-200 font-medium">No fractional gallons</span>
+                                                <p className="text-gray-400 text-sm">Show "1 gal + 2 qt" instead of "1½ gal"</p>
+                                            </div>
+                                        </label>
+                                        
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={displayRules.noFractionalPounds}
+                                                onChange={(e) => updateDisplayRule('noFractionalPounds', e.target.checked)}
+                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                            />
+                                            <div>
+                                                <span className="text-gray-200 font-medium">No fractional pounds</span>
+                                                <p className="text-gray-400 text-sm">Show "2 lb + 8 oz" instead of "2½ lb"</p>
+                                            </div>
+                                        </label>
+                                        
+                                        <label className="flex items-center gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={displayRules.roundEggsUp}
+                                                onChange={(e) => updateDisplayRule('roundEggsUp', e.target.checked)}
+                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                            />
+                                            <div>
+                                                <span className="text-gray-200 font-medium">Round eggs up</span>
+                                                <p className="text-gray-400 text-sm">Show "3 eggs" instead of "2.3 eggs" (rounds up when &gt; 0.25)</p>
+                                            </div>
+                                        </label>
                                     </div>
                                 </div>
                                 
