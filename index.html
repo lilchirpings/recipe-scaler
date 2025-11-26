@@ -2229,6 +2229,7 @@
 
                                 {showSaved && (
                                     <div className="mb-4 p-4 bg-gray-700 rounded max-h-64 overflow-y-auto">
+                                        <p className="text-xs text-yellow-400/80 mb-3">⚠ Saved locally in browser — clears if you clear site data</p>
                                         {savedRecipes.length === 0 ? (
                                             <p className="text-gray-400">No saved recipes</p>
                                         ) : (
@@ -2337,7 +2338,7 @@
                                         type="text"
                                         value={recipeName}
                                         onChange={(e) => setRecipeName(e.target.value)}
-                                        placeholder="Recipe name (optional)"
+                                        placeholder="Recipe name"
                                         className="flex-1 bg-gray-700 text-gray-100 p-2 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
                                     />
                                     <button
