@@ -884,85 +884,96 @@
             
             // Try to match: quantity unit ingredient
             // Supports: "2 cups flour", "1/2 cup sugar", "2 1/2 cups water", "2-1/2 cups" (mixed fraction), "1.5 tsp salt", "2.25 cups milk", "2-3 cups water", "3 eggs"
-            const patterns = [
-                // Whole number + unicode fraction with space + unit: "11 ½ tsps salt" (MUST BE FIRST!)
-                /^(\d+)\s+([½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,
-                // Whole number + unicode fraction (no space) + unit: "11½ tsps salt"
-                /^(\d+)([½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,
-                // Compound measurement: "1 qt 1/4 cups butter" or "1 qt ¼ cups butter"
-                /^(\d+)\s+([a-zA-Z]+)\s+(\d+\/\d+|[½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,
-                // Mixed fraction with unit: "2 1/2 cups" (plain text fraction)
-                /^(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Decimal with unit: "2.25 cups" or "10.5 tablespoons"
-                /^(\d+\.\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                // NO-SPACE FORMATS: "100g sugar", "2.5kg flour" (common in metric recipes)
-                // Decimal with unit, no space: "2.5kg flour"
-                /^(\d+\.\d+)([a-zA-Z]+)\s+(.+)$/,
-                // Integer with unit, no space: "100g sugar", "500ml water"
-                /^(\d+)([a-zA-Z]+)\s+(.+)$/,
-                // Decimal range with unit: "1.5-3 teaspoons"
-                /^(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Ambiguous: could be range or mixed fraction: "2-1/2 cups" or "1-2 cups"
-                /^(\d+)\s*-\s*(\d+\/\d+|\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Range with mixed fractions: "1 1/2-2 cups" or "2-2 1/2 cups"
-                /^(\d+)\s+(\d+\/\d+)\s*-\s*(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                /^(\d+)\s*-\s*(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                /^(\d+)\s+(\d+\/\d+)\s*-\s*(\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Standalone fraction with unit: "1/4 cup" or "1/2 tsp"
-                /^(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Fraction or decimal with unit (with range support)
-                /^(\d+\/\d+|\d+\.\d+)\s*-\s*(\d+\/\d+|\d+\.\d+)\s*([a-zA-Z]+)\s+(.+)$/,
-                // Just number with unit
-                /^(\d+)\s+([a-zA-Z]+)\s+(.+)$/,
-                // Unicode fraction with unit
-                /^([½⅓⅔¼¾⅛⅜⅝⅞])\s*([a-zA-Z]+)\s+(.+)$/,
-                // Mixed fraction count: "2 1/2 eggs"
-                /^(\d+)\s+(\d+\/\d+)\s+(.+)$/,
-                // Standalone fraction count: "1/2 onion"
-                /^(\d+\/\d+)\s+(.+)$/,
-                // Ambiguous count: "2-1/2 eggs" or "2-3 eggs"
-                /^(\d+)\s*-\s*(\d+\/\d+|\d+)\s+(.+)$/,
-                // Count with range: "2-3 eggs"
-                /^(\d+\/\d+|\d+\.\d+)\s*-\s*(\d+\/\d+|\d+\.\d+)\s+(.+)$/,
-                // Unicode fraction count only
-                /^([½⅓⅔¼¾⅛⅜⅝⅞])\s+(.+)$/,
-                // Simple count: "4 eggs" or "3 potatoes"
-                /^(\d+)\s+(.+)$/,
+            
+            // Named patterns object - use names instead of brittle numeric indices
+            const PATTERNS = {
+                // WITH UNITS (volume/weight)
+                wholeUnicodeFracSpaceUnit: /^(\d+)\s+([½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,      // "11 ½ tsps salt"
+                wholeUnicodeFracNoSpaceUnit: /^(\d+)([½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/,       // "11½ tsps salt"
+                compoundMeasurement: /^(\d+)\s+([a-zA-Z]+)\s+(\d+\/\d+|[½⅓⅔¼¾⅛⅜⅝⅞])\s+([a-zA-Z]+)\s+(.+)$/, // "1 qt 1/4 cups butter"
+                mixedFractionUnit: /^(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,                  // "2 1/2 cups flour"
+                decimalUnit: /^(\d+\.\d+)\s+([a-zA-Z]+)\s+(.+)$/,                                // "2.25 cups milk"
+                decimalUnitNoSpace: /^(\d+\.\d+)([a-zA-Z]+)\s+(.+)$/,                            // "2.5kg flour"
+                integerUnitNoSpace: /^(\d+)([a-zA-Z]+)\s+(.+)$/,                                 // "100g sugar"
+                decimalRangeUnit: /^(\d+\.?\d*)\s*-\s*(\d+\.?\d*)\s+([a-zA-Z]+)\s+(.+)$/,        // "1.5-3 teaspoons"
+                ambiguousRangeUnit: /^(\d+)\s*-\s*(\d+\/\d+|\d+)\s+([a-zA-Z]+)\s+(.+)$/,         // "2-1/2 cups" or "1-2 cups"
+                mixedFracRangeFull: /^(\d+)\s+(\d+\/\d+)\s*-\s*(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/, // "1 1/2-2 1/2 cups"
+                mixedFracRangeEnd: /^(\d+)\s*-\s*(\d+)\s+(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,      // "2-2 1/2 cups"
+                mixedFracRangeStart: /^(\d+)\s+(\d+\/\d+)\s*-\s*(\d+)\s+([a-zA-Z]+)\s+(.+)$/,    // "1 1/2-2 cups"
+                standaloneFractionUnit: /^(\d+\/\d+)\s+([a-zA-Z]+)\s+(.+)$/,                     // "1/4 cup honey"
+                fractionRangeUnit: /^(\d+\/\d+|\d+\.\d+)\s*-\s*(\d+\/\d+|\d+\.\d+)\s*([a-zA-Z]+)\s+(.+)$/, // "1/2-3/4 cups"
+                simpleNumberUnit: /^(\d+)\s+([a-zA-Z]+)\s+(.+)$/,                                // "2 cups flour"
+                unicodeFractionUnit: /^([½⅓⅔¼¾⅛⅜⅝⅞])\s*([a-zA-Z]+)\s+(.+)$/,                    // "½ cup milk"
+                
+                // COUNT ITEMS (no unit)
+                mixedFractionCount: /^(\d+)\s+(\d+\/\d+)\s+(.+)$/,                               // "2 1/2 eggs"
+                standaloneFractionCount: /^(\d+\/\d+)\s+(.+)$/,                                  // "1/2 onion"
+                ambiguousCount: /^(\d+)\s*-\s*(\d+\/\d+|\d+)\s+(.+)$/,                           // "2-3 eggs"
+                fractionRangeCount: /^(\d+\/\d+|\d+\.\d+)\s*-\s*(\d+\/\d+|\d+\.\d+)\s+(.+)$/,    // "1/2-1 onion"
+                unicodeFractionCount: /^([½⅓⅔¼¾⅛⅜⅝⅞])\s+(.+)$/,                                 // "½ onion"
+                simpleCount: /^(\d+)\s+(.+)$/,                                                   // "4 eggs"
+            };
+            
+            // Order matters! More specific patterns first, general patterns last
+            const patternOrder = [
+                'wholeUnicodeFracSpaceUnit',
+                'wholeUnicodeFracNoSpaceUnit', 
+                'compoundMeasurement',
+                'mixedFractionUnit',
+                'decimalUnit',
+                'decimalUnitNoSpace',
+                'integerUnitNoSpace',
+                'decimalRangeUnit',
+                'ambiguousRangeUnit',
+                'mixedFracRangeFull',
+                'mixedFracRangeEnd',
+                'mixedFracRangeStart',
+                'standaloneFractionUnit',
+                'fractionRangeUnit',
+                'simpleNumberUnit',
+                'unicodeFractionUnit',
+                'mixedFractionCount',
+                'standaloneFractionCount',
+                'ambiguousCount',
+                'fractionRangeCount',
+                'unicodeFractionCount',
+                'simpleCount',
             ];
 
-            for (const pattern of patterns) {
+            for (const patternName of patternOrder) {
+                const pattern = PATTERNS[patternName];
                 const match = line.match(pattern);
                 if (match) {
                     let quantity, unit, ingredient, isRange = false, rangeOriginal = null;
                     
-                    // Handle whole number + unicode fraction with space + unit: "11 ½ tsps salt"
-                    if (pattern === patterns[0]) {
+                    // === UNIT-BASED PATTERNS ===
+                    
+                    if (patternName === 'wholeUnicodeFracSpaceUnit') {
+                        // "11 ½ tsps salt"
                         const whole = parseInt(match[1]);
                         const frac = parseUnicodeFraction(match[2]);
                         quantity = whole + frac;
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Handle whole number + unicode fraction (no space) + unit: "11½ tsps salt"
-                    else if (pattern === patterns[1]) {
+                    else if (patternName === 'wholeUnicodeFracNoSpaceUnit') {
+                        // "11½ tsps salt"
                         const whole = parseInt(match[1]);
                         const frac = parseUnicodeFraction(match[2]);
                         quantity = whole + frac;
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Handle compound measurement: "1 qt 1/4 cups butter" or "1 qt ¼ cups butter"
-                    else if (pattern === patterns[2]) {
+                    else if (patternName === 'compoundMeasurement') {
+                        // "1 qt 1/4 cups butter"
                         const mainQty = parseInt(match[1]);
                         const mainUnit = match[2].toLowerCase();
                         const remFrac = match[3];
                         const remUnit = match[4].toLowerCase();
                         ingredient = match[5];
                         
-                        // Convert fraction (either unicode or plain text)
                         const remQty = remFrac.match(/\d/) ? parseQuantity(remFrac) : parseUnicodeFraction(remFrac);
                         
-                        // Convert both to base unit
                         if (VOLUME_CONVERSIONS[mainUnit] && VOLUME_CONVERSIONS[remUnit]) {
                             const mainTsp = mainQty * VOLUME_CONVERSIONS[mainUnit];
                             const remTsp = remQty * VOLUME_CONVERSIONS[remUnit];
@@ -974,38 +985,37 @@
                             quantity = mainG + remG;
                             unit = 'g';
                         } else {
-                            // Can't parse, skip
                             continue;
                         }
                     }
-                    // Handle mixed fractions with plain text: "2 1/2 cups flour"
-                    else if (pattern === patterns[3]) {
+                    else if (patternName === 'mixedFractionUnit') {
+                        // "2 1/2 cups flour"
                         const whole = parseInt(match[1]);
                         const frac = parseQuantity(match[2]);
                         quantity = whole + frac;
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Handle decimal with unit: "2.25 cups milk"
-                    else if (pattern === patterns[4]) {
+                    else if (patternName === 'decimalUnit') {
+                        // "2.25 cups milk"
                         quantity = parseFloat(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
-                    // Handle decimal with unit, no space: "2.5kg flour"
-                    else if (pattern === patterns[5]) {
+                    else if (patternName === 'decimalUnitNoSpace') {
+                        // "2.5kg flour"
                         quantity = parseFloat(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
-                    // Handle integer with unit, no space: "100g sugar"
-                    else if (pattern === patterns[6]) {
+                    else if (patternName === 'integerUnitNoSpace') {
+                        // "100g sugar"
                         quantity = parseInt(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
-                    // Handle decimal range with unit: "1.5-3 teaspoons"
-                    else if (pattern === patterns[7]) {
+                    else if (patternName === 'decimalRangeUnit') {
+                        // "1.5-3 teaspoons"
                         const q1 = parseFloat(match[1]);
                         const q2 = parseFloat(match[2]);
                         isRange = true;
@@ -1014,87 +1024,61 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Handle whole number + unicode fraction with space: "1 ½ tsp"
-                    else if (pattern === patterns[2]) {
-                        const whole = parseInt(match[1]);
-                        const frac = parseUnicodeFraction(match[2]);
-                        quantity = whole + frac;
-                        unit = match[3].toLowerCase();
-                        ingredient = match[4];
-                    }
-                    // Handle whole number + unicode fraction (no space): "1½ lbs"
-                    else if (pattern === patterns[3]) {
-                        const whole = parseInt(match[1]);
-                        const frac = parseUnicodeFraction(match[2]);
-                        quantity = whole + frac;
-                        unit = match[3].toLowerCase();
-                        ingredient = match[4];
-                    }
-                    // Handle mixed fractions with unit: "2 1/2 cups flour"
-                    else if (pattern === patterns[4]) {
-                        const whole = parseInt(match[1]);
-                        const frac = parseQuantity(match[2]);
-                        quantity = whole + frac;
-                        unit = match[3].toLowerCase();
-                        ingredient = match[4];
-                    }
-                    // Handle ambiguous "2-1/2" format with unit - could be range or mixed fraction
-                    else if (pattern === patterns[7]) {
+                    else if (patternName === 'ambiguousRangeUnit') {
+                        // "2-1/2 cups" or "1-2 cups"
                         const q1 = parseInt(match[1]);
                         const q2 = parseQuantity(match[2]);
                         
-                        // If q1 > q2, treat as mixed fraction (e.g., "2-1/2" = 2.5)
-                        // If q1 < q2, treat as range (e.g., "1-2" = range from 1 to 2)
                         if (q1 > q2) {
                             // Mixed fraction: "2-1/2 cups" = 2.5 cups
                             quantity = q1 + q2;
-                            unit = match[3].toLowerCase();
-                            ingredient = match[4];
                         } else {
-                            // Valid range: "1-2 cups"
+                            // Range: "1-2 cups"
                             isRange = true;
                             rangeOriginal = `${match[1]}-${match[2]}`;
                             quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
-                            unit = match[3].toLowerCase();
-                            ingredient = match[4];
                         }
+                        unit = match[3].toLowerCase();
+                        ingredient = match[4];
                     }
-                    // Handle mixed fraction ranges with unit
-                    else if (pattern === patterns[8] || pattern === patterns[9] || pattern === patterns[10]) {
+                    else if (patternName === 'mixedFracRangeFull') {
+                        // "1 1/2-2 1/2 cups"
                         isRange = true;
-                        let q1, q2;
-                        if (pattern === patterns[8]) {
-                            // "1 1/2-2 1/2 cups"
-                            q1 = parseInt(match[1]) + parseQuantity(match[2]);
-                            q2 = parseInt(match[3]) + parseQuantity(match[4]);
-                            rangeOriginal = `${match[1]} ${match[2]}-${match[3]} ${match[4]}`;
-                            unit = match[5].toLowerCase();
-                            ingredient = match[6];
-                        } else if (pattern === patterns[9]) {
-                            // "2-2 1/2 cups"
-                            q1 = parseInt(match[1]);
-                            q2 = parseInt(match[2]) + parseQuantity(match[3]);
-                            rangeOriginal = `${match[1]}-${match[2]} ${match[3]}`;
-                            unit = match[4].toLowerCase();
-                            ingredient = match[5];
-                        } else {
-                            // "2 1/2-3 cups"
-                            q1 = parseInt(match[1]) + parseQuantity(match[2]);
-                            q2 = parseInt(match[3]);
-                            rangeOriginal = `${match[1]} ${match[2]}-${match[3]}`;
-                            unit = match[4].toLowerCase();
-                            ingredient = match[5];
-                        }
+                        const q1 = parseInt(match[1]) + parseQuantity(match[2]);
+                        const q2 = parseInt(match[3]) + parseQuantity(match[4]);
+                        rangeOriginal = `${match[1]} ${match[2]}-${match[3]} ${match[4]}`;
                         quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
+                        unit = match[5].toLowerCase();
+                        ingredient = match[6];
                     }
-                    // Standalone fraction with unit: "1/4 cup honey"
-                    else if (pattern === patterns[11]) {
+                    else if (patternName === 'mixedFracRangeEnd') {
+                        // "2-2 1/2 cups"
+                        isRange = true;
+                        const q1 = parseInt(match[1]);
+                        const q2 = parseInt(match[2]) + parseQuantity(match[3]);
+                        rangeOriginal = `${match[1]}-${match[2]} ${match[3]}`;
+                        quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
+                        unit = match[4].toLowerCase();
+                        ingredient = match[5];
+                    }
+                    else if (patternName === 'mixedFracRangeStart') {
+                        // "1 1/2-2 cups"
+                        isRange = true;
+                        const q1 = parseInt(match[1]) + parseQuantity(match[2]);
+                        const q2 = parseInt(match[3]);
+                        rangeOriginal = `${match[1]} ${match[2]}-${match[3]}`;
+                        quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
+                        unit = match[4].toLowerCase();
+                        ingredient = match[5];
+                    }
+                    else if (patternName === 'standaloneFractionUnit') {
+                        // "1/4 cup honey"
                         quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                     }
-                    // Fraction/decimal range: "1/2-3/4 cups"
-                    else if (pattern === patterns[12]) {
+                    else if (patternName === 'fractionRangeUnit') {
+                        // "1/2-3/4 cups"
                         const q1 = parseQuantity(match[1]);
                         const q2 = parseQuantity(match[2]);
                         isRange = true;
@@ -1103,160 +1087,16 @@
                         unit = match[3].toLowerCase();
                         ingredient = match[4];
                     }
-                    // Mixed fraction count: "2 1/2 eggs"
-                    else if (pattern === patterns[15]) {
-                        quantity = parseUnicodeFraction(match[1]);
-                        unit = match[2].toLowerCase();
-                        ingredient = match[3];
-                    }
-                    // Standalone fraction count: "1/2 onion"
-                    else if (pattern === patterns[16]) {
-                        quantity = parseQuantity(match[1]);
-                        ingredient = match[2];
-                        
-                        // Clean up ingredient (remove commas and descriptions after comma)
-                        ingredient = ingredient.replace(/,.*$/, '').trim();
-                        
-                        // Check if this might actually be a unit-based ingredient
-                        const firstWord = ingredient.split(/\s+/)[0]?.toLowerCase();
-                        if (VOLUME_CONVERSIONS[firstWord] || WEIGHT_CONVERSIONS[firstWord]) {
-                            // This is actually "1/2 cup something" - continue to next pattern
-                            continue;
-                        }
-                        
-                        return {
-                            original: originalLine,
-                            quantity,
-                            unit: 'count',
-                            ingredient: ingredient,
-                            type: 'count',
-                            baseValue: quantity,
-                            isRange,
-                            rangeOriginal,
-                            notes,
-                            alternative
-                        };
-                    }
-                    // Handle ambiguous "2-1/2" format for count - could be range or mixed fraction
-                    else if (pattern === patterns[17]) {
-                        const q1 = parseInt(match[1]);
-                        const q2 = parseQuantity(match[2]);
-                        
-                        // If q1 > q2, treat as mixed fraction (e.g., "2-1/2" = 2.5)
-                        // If q1 < q2, treat as range (e.g., "1-2" = range from 1 to 2)
-                        if (q1 > q2) {
-                            // Mixed fraction: "2-1/2 eggs" = 2.5 eggs
-                            quantity = q1 + q2;
-                            ingredient = match[3];
-                        } else {
-                            // Valid range: "1-2 eggs"
-                            isRange = true;
-                            rangeOriginal = `${match[1]}-${match[2]}`;
-                            quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
-                            ingredient = match[3];
-                        }
-                        
-                        // Clean up ingredient (remove commas and descriptions after comma)
-                        ingredient = ingredient.replace(/,.*$/, '').trim();
-                        
-                        return {
-                            original: originalLine,
-                            quantity,
-                            unit: 'count',
-                            ingredient: ingredient,
-                            type: 'count',
-                            baseValue: quantity,
-                            isRange,
-                            rangeOriginal,
-                            notes,
-                            alternative
-                        };
-                    }
-                    // Fraction/decimal range for count
-                    else if (pattern === patterns[18]) {
-                        const q1 = parseQuantity(match[1]);
-                        const q2 = parseQuantity(match[2]);
-                        isRange = true;
-                        rangeOriginal = `${match[1]}-${match[2]}`;
-                        quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
-                        ingredient = match[3];
-                        
-                        // Clean up ingredient (remove commas and descriptions after comma)
-                        ingredient = ingredient.replace(/,.*$/, '').trim();
-                        
-                        return {
-                            original: originalLine,
-                            quantity,
-                            unit: 'count',
-                            ingredient: ingredient,
-                            type: 'count',
-                            baseValue: quantity,
-                            isRange,
-                            rangeOriginal,
-                            notes,
-                            alternative
-                        };
-                    }
-                    // Unicode fraction count: "½ onion"
-                    else if (pattern === patterns[19]) {
-                        quantity = parseUnicodeFraction(match[1]);
-                        ingredient = match[2];
-                        
-                        // Clean up ingredient (remove commas and descriptions after comma)
-                        ingredient = ingredient.replace(/,.*$/, '').trim();
-                        
-                        return {
-                            original: originalLine,
-                            quantity,
-                            unit: 'count',
-                            ingredient: ingredient,
-                            type: 'count',
-                            baseValue: quantity,
-                            isRange,
-                            rangeOriginal,
-                            notes,
-                            alternative
-                        };
-                    }
-                    // Simple count: "4 chicken thighs" - LAST RESORT (most general)
-                    else if (pattern === patterns[21]) {
+                    else if (patternName === 'simpleNumberUnit') {
+                        // "2 cups flour" or "2 large eggs"
                         quantity = parseInt(match[1]);
-                        ingredient = match[2];
-                        
-                        // Clean up ingredient (remove commas and descriptions after comma)
-                        ingredient = ingredient.replace(/,.*$/, '').trim();
-                        
-                        // Only treat as count if it doesn't look like it should have a unit
-                        // Check if the next word after the number is a known unit
-                        const firstWord = ingredient.split(/\s+/)[0]?.toLowerCase();
-                        if (VOLUME_CONVERSIONS[firstWord] || WEIGHT_CONVERSIONS[firstWord]) {
-                            // This is actually a unit-based ingredient, let it fall through
-                            continue;
-                        }
-                        
-                        return {
-                            original: originalLine,
-                            quantity,
-                            unit: 'count',
-                            ingredient: ingredient,
-                            type: 'count',
-                            baseValue: quantity,
-                            isRange,
-                            rangeOriginal,
-                            notes,
-                            alternative
-                        };
-                    }
-                    // Simple unit-based: "2 cups flour" (patterns[14])
-                    else if (pattern === patterns[14]) {
-                        quantity = parseQuantity(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
                         
-                        // Check if this is a size descriptor (not a real unit)
+                        // Check if "unit" is actually a size descriptor (not a real unit)
                         const sizeDescriptors = ['small', 'medium', 'large', 'extra-large', 'jumbo', 'whole', 'fresh', 'dried', 'chopped', 'minced', 'sliced', 'diced'];
                         if (sizeDescriptors.includes(unit) || (!VOLUME_CONVERSIONS[unit] && !WEIGHT_CONVERSIONS[unit])) {
-                            // Treat as count item: "2 large eggs" → quantity=2, ingredient="large eggs"
+                            // Treat as count: "2 large eggs" → quantity=2, ingredient="large eggs"
                             ingredient = match[2] + ' ' + match[3];
                             ingredient = ingredient.replace(/,.*$/, '').trim();
                             
@@ -1274,11 +1114,151 @@
                             };
                         }
                     }
-                    // Unicode fraction with unit (patterns[15])
-                    else if (pattern === patterns[15]) {
-                        quantity = parseInt(match[1]);
+                    else if (patternName === 'unicodeFractionUnit') {
+                        // "½ cup milk"
+                        quantity = parseUnicodeFraction(match[1]);
                         unit = match[2].toLowerCase();
                         ingredient = match[3];
+                    }
+                    
+                    // === COUNT-BASED PATTERNS (no unit) ===
+                    
+                    else if (patternName === 'mixedFractionCount') {
+                        // "2 1/2 eggs"
+                        const whole = parseInt(match[1]);
+                        const frac = parseQuantity(match[2]);
+                        quantity = whole + frac;
+                        ingredient = match[3].replace(/,.*$/, '').trim();
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes,
+                            alternative
+                        };
+                    }
+                    else if (patternName === 'standaloneFractionCount') {
+                        // "1/2 onion"
+                        quantity = parseQuantity(match[1]);
+                        ingredient = match[2].replace(/,.*$/, '').trim();
+                        
+                        // Check if this might actually be a unit-based ingredient
+                        const firstWord = ingredient.split(/\s+/)[0]?.toLowerCase();
+                        if (VOLUME_CONVERSIONS[firstWord] || WEIGHT_CONVERSIONS[firstWord]) {
+                            continue; // Let next pattern handle it
+                        }
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes,
+                            alternative
+                        };
+                    }
+                    else if (patternName === 'ambiguousCount') {
+                        // "2-3 eggs" or "2-1/2 eggs"
+                        const q1 = parseInt(match[1]);
+                        const q2 = parseQuantity(match[2]);
+                        
+                        if (q1 > q2) {
+                            // Mixed fraction: "2-1/2 eggs" = 2.5 eggs
+                            quantity = q1 + q2;
+                        } else {
+                            // Range: "2-3 eggs"
+                            isRange = true;
+                            rangeOriginal = `${match[1]}-${match[2]}`;
+                            quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
+                        }
+                        ingredient = match[3].replace(/,.*$/, '').trim();
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes,
+                            alternative
+                        };
+                    }
+                    else if (patternName === 'fractionRangeCount') {
+                        // "1/2-1 onion"
+                        const q1 = parseQuantity(match[1]);
+                        const q2 = parseQuantity(match[2]);
+                        isRange = true;
+                        rangeOriginal = `${match[1]}-${match[2]}`;
+                        quantity = rangeMode === 'low' ? q1 : rangeMode === 'high' ? q2 : (q1 + q2) / 2;
+                        ingredient = match[3].replace(/,.*$/, '').trim();
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes,
+                            alternative
+                        };
+                    }
+                    else if (patternName === 'unicodeFractionCount') {
+                        // "½ onion"
+                        quantity = parseUnicodeFraction(match[1]);
+                        ingredient = match[2].replace(/,.*$/, '').trim();
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes,
+                            alternative
+                        };
+                    }
+                    else if (patternName === 'simpleCount') {
+                        // "4 eggs" or "3 potatoes"
+                        quantity = parseInt(match[1]);
+                        ingredient = match[2].replace(/,.*$/, '').trim();
+                        
+                        // Make sure first word isn't a unit
+                        const firstWord = ingredient.split(/\s+/)[0]?.toLowerCase();
+                        if (VOLUME_CONVERSIONS[firstWord] || WEIGHT_CONVERSIONS[firstWord]) {
+                            continue;
+                        }
+                        
+                        return {
+                            original: originalLine,
+                            quantity,
+                            unit: 'count',
+                            ingredient: ingredient,
+                            type: 'count',
+                            baseValue: quantity,
+                            isRange,
+                            rangeOriginal,
+                            notes,
+                            alternative
+                        };
                     }
 
                     // Clean up ingredient (remove commas and descriptions after comma)
@@ -1309,7 +1289,7 @@
                             isRange,
                             rangeOriginal,
                             notes,
-                            alternative // Include parsed alternative if found
+                            alternative
                         };
                     }
                 }
