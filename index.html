@@ -1475,6 +1475,144 @@
                 noFractionalPounds: false,   // 2.5 lb → 2 lb + 8 oz (optional)
                 roundEggsUp: true,           // 2.3 eggs → 3 eggs
             });
+            
+            // Theme settings
+            const [themeSettings, setThemeSettings] = useState({
+                colorTheme: 'slate',    // slate, forest, ocean, wine, charcoal, claude
+                fontSize: 'small',      // tiny, small, medium, large
+            });
+            
+            // Theme definitions
+            const THEMES = {
+                slate: {
+                    name: 'Slate',
+                    bg: 'bg-slate-900',
+                    bgSecondary: 'bg-slate-800',
+                    bgTertiary: 'bg-slate-700',
+                    accent: 'text-blue-400',
+                    accentBg: 'bg-blue-600',
+                    accentHover: 'hover:bg-blue-700',
+                    border: 'border-slate-600',
+                    text: 'text-slate-100',
+                    textMuted: 'text-slate-400',
+                },
+                claude: {
+                    name: 'Sandstone',
+                    bg: 'bg-[#2a2320]',
+                    bgSecondary: 'bg-[#3d3530]',
+                    bgTertiary: 'bg-[#4a433d]',
+                    accent: 'text-[#d4a574]',
+                    accentBg: 'bg-[#c9956c]',
+                    accentHover: 'hover:bg-[#b8845b]',
+                    border: 'border-[#5a524b]',
+                    text: 'text-[#ebe4dc]',
+                    textMuted: 'text-[#a69b8f]',
+                },
+                forest: {
+                    name: 'Forest',
+                    bg: 'bg-gray-900',
+                    bgSecondary: 'bg-gray-800',
+                    bgTertiary: 'bg-gray-700',
+                    accent: 'text-emerald-400',
+                    accentBg: 'bg-emerald-600',
+                    accentHover: 'hover:bg-emerald-700',
+                    border: 'border-gray-600',
+                    text: 'text-gray-100',
+                    textMuted: 'text-gray-400',
+                },
+                ocean: {
+                    name: 'Ocean',
+                    bg: 'bg-slate-900',
+                    bgSecondary: 'bg-slate-800',
+                    bgTertiary: 'bg-slate-700',
+                    accent: 'text-cyan-400',
+                    accentBg: 'bg-cyan-600',
+                    accentHover: 'hover:bg-cyan-700',
+                    border: 'border-slate-600',
+                    text: 'text-slate-100',
+                    textMuted: 'text-slate-400',
+                },
+                wine: {
+                    name: 'Wine',
+                    bg: 'bg-zinc-900',
+                    bgSecondary: 'bg-zinc-800',
+                    bgTertiary: 'bg-zinc-700',
+                    accent: 'text-rose-400',
+                    accentBg: 'bg-rose-600',
+                    accentHover: 'hover:bg-rose-700',
+                    border: 'border-zinc-600',
+                    text: 'text-zinc-100',
+                    textMuted: 'text-zinc-400',
+                },
+                charcoal: {
+                    name: 'Charcoal',
+                    bg: 'bg-neutral-900',
+                    bgSecondary: 'bg-neutral-800',
+                    bgTertiary: 'bg-neutral-700',
+                    accent: 'text-amber-400',
+                    accentBg: 'bg-amber-600',
+                    accentHover: 'hover:bg-amber-700',
+                    border: 'border-neutral-600',
+                    text: 'text-neutral-100',
+                    textMuted: 'text-neutral-400',
+                },
+            };
+            
+            // Font size classes with corresponding spacing
+            const FONT_SIZES = {
+                tiny: { 
+                    base: 'text-xs', 
+                    heading: 'text-sm', 
+                    large: 'text-base',
+                    ingredient: 'text-xs',
+                    padding: 'p-2',
+                    paddingX: 'px-2',
+                    paddingY: 'py-1',
+                    gap: 'gap-1',
+                    space: 'space-y-1',
+                    mb: 'mb-2',
+                },
+                small: { 
+                    base: 'text-sm', 
+                    heading: 'text-base', 
+                    large: 'text-lg',
+                    ingredient: 'text-sm',
+                    padding: 'p-3',
+                    paddingX: 'px-3',
+                    paddingY: 'py-1.5',
+                    gap: 'gap-2',
+                    space: 'space-y-2',
+                    mb: 'mb-3',
+                },
+                medium: { 
+                    base: 'text-base', 
+                    heading: 'text-lg', 
+                    large: 'text-xl',
+                    ingredient: 'text-base',
+                    padding: 'p-4',
+                    paddingX: 'px-4',
+                    paddingY: 'py-2',
+                    gap: 'gap-3',
+                    space: 'space-y-3',
+                    mb: 'mb-4',
+                },
+                large: { 
+                    base: 'text-lg', 
+                    heading: 'text-xl', 
+                    large: 'text-2xl',
+                    ingredient: 'text-lg',
+                    padding: 'p-6',
+                    paddingX: 'px-6',
+                    paddingY: 'py-3',
+                    gap: 'gap-4',
+                    space: 'space-y-4',
+                    mb: 'mb-6',
+                },
+            };
+            
+            // Get current theme
+            const theme = THEMES[themeSettings.colorTheme] || THEMES.slate;
+            const fontSize = FONT_SIZES[themeSettings.fontSize] || FONT_SIZES.medium;
 
             // Common ambiguous items that should show warnings
             const AMBIGUOUS_ITEMS = {
@@ -1548,6 +1686,12 @@
                 const rules = localStorage.getItem('displayRules');
                 if (rules) {
                     setDisplayRules(JSON.parse(rules));
+                }
+                
+                // Load theme settings
+                const savedTheme = localStorage.getItem('themeSettings');
+                if (savedTheme) {
+                    setThemeSettings(JSON.parse(savedTheme));
                 }
                 
                 const conversions = localStorage.getItem('customConversions');
@@ -1660,6 +1804,12 @@
                 const updated = { ...displayRules, [rule]: value };
                 setDisplayRules(updated);
                 localStorage.setItem('displayRules', JSON.stringify(updated));
+            };
+            
+            const updateThemeSetting = (setting, value) => {
+                const updated = { ...themeSettings, [setting]: value };
+                setThemeSettings(updated);
+                localStorage.setItem('themeSettings', JSON.stringify(updated));
             };
 
             const deleteCustomConversion = (key) => {
@@ -2065,37 +2215,37 @@
             }, [inputText, rangeHandling]);
 
             return (
-                <div className="min-h-screen bg-gray-900 p-4">
+                <div className={`min-h-screen ${theme.bg} p-4 ${fontSize.base} ${theme.text}`}>
                     <div className="max-w-6xl mx-auto">
                         {/* Header with Navigation */}
-                        <div className="bg-gray-800 rounded-lg shadow-xl p-4 md:p-6 mb-6">
+                        <div className={`${theme.bgSecondary} rounded-lg shadow-xl p-4 md:p-6 mb-6`}>
                             <div className="flex justify-between items-center">
                                 <div>
-                                    <h1 className="text-2xl md:text-3xl font-bold text-green-400 mb-1 md:mb-2">Smart Recipe Scaler</h1>
-                                    <p className="text-sm md:text-base text-gray-400 hidden sm:block">Scale recipes with intelligent unit conversions</p>
+                                    <h1 className={`${fontSize.large} md:text-3xl font-bold ${theme.accent} mb-1 md:mb-2`}>Smart Recipe Scaler</h1>
+                                    <p className={`text-sm md:${fontSize.base} ${theme.textMuted} hidden sm:block`}>Scale recipes with intelligent unit conversions</p>
                                 </div>
                                 
                                 {/* Navigation - visible on all screen sizes */}
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => setCurrentPage('scaler')}
-                                        className={`px-4 md:px-6 py-2 rounded font-semibold text-sm md:text-base ${
+                                        className={`px-4 md:px-6 py-2 rounded font-semibold text-sm md:${fontSize.base} ${
                                             currentPage === 'scaler'
-                                                ? 'bg-green-600 text-white'
-                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                ? `${theme.accentBg} text-white`
+                                                : `${theme.bgTertiary} ${theme.textMuted} hover:opacity-80`
                                         }`}
                                     >
                                         Recipe Scaler
                                     </button>
                                     <button
                                         onClick={() => setCurrentPage('settings')}
-                                        className={`px-4 md:px-6 py-2 rounded font-semibold text-sm md:text-base ${
+                                        className={`px-4 md:px-6 py-2 rounded font-semibold text-sm md:${fontSize.base} ${
                                             currentPage === 'settings'
-                                                ? 'bg-green-600 text-white'
-                                                : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                                                ? `${theme.accentBg} text-white`
+                                                : `${theme.bgTertiary} ${theme.textMuted} hover:opacity-80`
                                         }`}
                                     >
-                                        Conversion Preferences
+                                        Settings
                                     </button>
                                 </div>
                             </div>
@@ -2103,79 +2253,79 @@
 
                         {/* Conversion Preferences Page */}
                         {currentPage === 'settings' && (
-                            <div className="bg-gray-800 rounded-lg shadow-xl p-6">
-                                <h2 className="text-2xl font-bold text-green-400 mb-6">Conversion Preferences</h2>
+                            <div className={`${theme.bgSecondary} rounded-lg shadow-xl ${fontSize.padding}`}>
+                                <h2 className={`${fontSize.large} font-bold ${theme.accent} ${fontSize.mb}`}>Settings</h2>
                                 
                                 {/* Custom Conversions Section */}
                                 <div className="mb-8">
-                                    <h3 className="text-xl font-bold text-green-400 mb-3">Custom Conversions</h3>
-                                    <p className="text-gray-400 mb-4">
+                                    <h3 className={`${fontSize.heading} font-bold ${theme.accent} mb-3`}>Custom Conversions</h3>
+                                    <p className={`${theme.textMuted} ${fontSize.mb}`}>
                                         Define bidirectional conversions for ambiguous measurements. Once set, conversions work automatically in both directions. 
                                         For example, defining "1 garlic bulb ⇄ 10 cloves" lets you convert bulbs to cloves OR cloves to bulbs.
                                     </p>
                                     
-                                    <div className="bg-gray-700 p-6 rounded-lg mb-4">
-                                        <h4 className="font-semibold text-gray-200 mb-3">Add New Conversion</h4>
-                                        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+                                    <div className={`${theme.bgTertiary} ${fontSize.padding} rounded-lg ${fontSize.mb}`}>
+                                        <h4 className={`font-semibold ${theme.text} mb-3`}>Add New Conversion</h4>
+                                        <div className={`grid grid-cols-1 md:grid-cols-5 ${fontSize.gap}`}>
                                             <div>
-                                                <label className="block text-sm text-gray-400 mb-1">Unit A</label>
+                                                <label className={`block text-sm ${theme.textMuted} mb-1`}>Unit A</label>
                                                 <input
                                                     type="text"
                                                     value={newConversionFrom}
                                                     onChange={(e) => setNewConversionFrom(e.target.value)}
                                                     placeholder="e.g., garlic bulb"
-                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                    className={`w-full ${theme.bgSecondary} ${theme.text} p-2 rounded border ${theme.border} focus:outline-none focus:ring-2 focus:ring-opacity-50`}
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm text-gray-400 mb-1">Unit B</label>
+                                                <label className={`block text-sm ${theme.textMuted} mb-1`}>Unit B</label>
                                                 <input
                                                     type="text"
                                                     value={newConversionTo}
                                                     onChange={(e) => setNewConversionTo(e.target.value)}
                                                     placeholder="e.g., cloves"
-                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                    className={`w-full ${theme.bgSecondary} ${theme.text} p-2 rounded border ${theme.border} focus:outline-none focus:ring-2 focus:ring-opacity-50`}
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm text-gray-400 mb-1">Ratio</label>
+                                                <label className={`block text-sm ${theme.textMuted} mb-1`}>Ratio</label>
                                                 <input
                                                     type="number"
                                                     value={newConversionRatio}
                                                     onChange={(e) => setNewConversionRatio(e.target.value)}
                                                     placeholder="e.g., 10"
                                                     step="0.1"
-                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                    className={`w-full ${theme.bgSecondary} ${theme.text} p-2 rounded border ${theme.border} focus:outline-none focus:ring-2 focus:ring-opacity-50`}
                                                 />
                                             </div>
                                             <div>
-                                                <label className="block text-sm text-gray-400 mb-1">Note (Optional)</label>
+                                                <label className={`block text-sm ${theme.textMuted} mb-1`}>Note (Optional)</label>
                                                 <input
                                                     type="text"
                                                     value={newConversionNote}
                                                     onChange={(e) => setNewConversionNote(e.target.value)}
                                                     placeholder="e.g., Varies by size"
-                                                    className="w-full bg-gray-600 text-gray-100 p-2 rounded border border-gray-500 focus:border-green-400 focus:outline-none"
+                                                    className={`w-full ${theme.bgSecondary} ${theme.text} p-2 rounded border ${theme.border} focus:outline-none focus:ring-2 focus:ring-opacity-50`}
                                                 />
                                             </div>
                                             <div className="flex items-end">
                                                 <button
                                                     onClick={addCustomConversion}
-                                                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-semibold"
+                                                    className={`w-full ${fontSize.paddingX} ${fontSize.paddingY} ${theme.accentBg} ${theme.accentHover} rounded font-semibold text-white`}
                                                 >
                                                     Add Conversion
                                                 </button>
                                             </div>
                                         </div>
-                                        <p className="text-xs text-gray-500 mt-2">
+                                        <p className={`text-xs ${theme.textMuted} mt-2`}>
                                             Example: 1 "garlic bulb" ⇄ 10 "cloves" means enter bulb as Unit A, cloves as Unit B, ratio 10. Works both ways automatically.
                                         </p>
                                     </div>
                                     
                                     {/* Existing Conversions */}
-                                    <div className="bg-gray-700 p-6 rounded-lg">
+                                    <div className={`${theme.bgTertiary} ${fontSize.padding} rounded-lg`}>
                                         <div className="flex justify-between items-center mb-3">
-                                            <h4 className="font-semibold text-gray-200">Your Conversions</h4>
+                                            <h4 className={`font-semibold ${theme.text}`}>Your Conversions</h4>
                                             <button
                                                 onClick={() => {
                                                     if (confirm('Load default conversions? This will add common measurements (existing conversions will be kept).')) {
@@ -2231,37 +2381,37 @@
                                                         localStorage.setItem('customConversions', JSON.stringify(merged));
                                                     }
                                                 }}
-                                                className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                                                className={`${fontSize.paddingX} ${fontSize.paddingY} ${theme.accentBg} ${theme.accentHover} rounded text-sm text-white`}
                                             >
                                                 Load Defaults
                                             </button>
                                         </div>
                                         {Object.keys(customConversions).length > 0 ? (
                                             <div className="overflow-x-auto">
-                                                <table className="w-full text-sm">
+                                                <table className={`w-full ${fontSize.base}`}>
                                                     <thead>
-                                                        <tr className="border-b border-gray-500">
-                                                            <th className="text-left p-2 text-gray-400">Unit A</th>
-                                                            <th className="text-left p-2 text-gray-400">Ratio</th>
-                                                            <th className="text-left p-2 text-gray-400">Unit B</th>
-                                                            <th className="text-left p-2 text-gray-400">Note</th>
-                                                            <th className="text-right p-2 text-gray-400">Actions</th>
+                                                        <tr className={`border-b ${theme.border}`}>
+                                                            <th className={`text-left p-2 ${theme.textMuted}`}>Unit A</th>
+                                                            <th className={`text-left p-2 ${theme.textMuted}`}>Ratio</th>
+                                                            <th className={`text-left p-2 ${theme.textMuted}`}>Unit B</th>
+                                                            <th className={`text-left p-2 ${theme.textMuted}`}>Note</th>
+                                                            <th className={`text-right p-2 ${theme.textMuted}`}>Actions</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
                                                         {Object.entries(customConversions).map(([key, value]) => (
-                                                            <tr key={key} className="border-b border-gray-600 hover:bg-gray-600">
+                                                            <tr key={key} className={`border-b ${theme.border} hover:opacity-80`}>
                                                                 {editingKey === key ? (
                                                                     <>
                                                                         <td className="p-2">
-                                                                            <span className="text-green-400 font-semibold">{key}</span>
+                                                                            <span className={`${theme.accent} font-semibold`}>{key}</span>
                                                                         </td>
                                                                         <td className="p-2">
                                                                             <input
                                                                                 type="number"
                                                                                 value={editValues.ratio}
                                                                                 onChange={(e) => setEditValues({...editValues, ratio: e.target.value})}
-                                                                                className="w-20 bg-gray-800 text-gray-100 p-1 rounded border border-gray-500 text-sm"
+                                                                                className={`w-20 ${theme.bg} ${theme.text} p-1 rounded border ${theme.border} text-sm`}
                                                                                 step="0.01"
                                                                             />
                                                                         </td>
@@ -2270,7 +2420,7 @@
                                                                                 type="text"
                                                                                 value={editValues.to}
                                                                                 onChange={(e) => setEditValues({...editValues, to: e.target.value})}
-                                                                                className="w-full bg-gray-800 text-gray-100 p-1 rounded border border-gray-500 text-sm"
+                                                                                className={`w-full ${theme.bg} ${theme.text} p-1 rounded border ${theme.border} text-sm`}
                                                                             />
                                                                         </td>
                                                                         <td className="p-2">
@@ -2278,19 +2428,19 @@
                                                                                 type="text"
                                                                                 value={editValues.note}
                                                                                 onChange={(e) => setEditValues({...editValues, note: e.target.value})}
-                                                                                className="w-full bg-gray-800 text-gray-100 p-1 rounded border border-gray-500 text-sm"
+                                                                                className={`w-full ${theme.bg} ${theme.text} p-1 rounded border ${theme.border} text-sm`}
                                                                             />
                                                                         </td>
                                                                         <td className="p-2 text-right">
                                                                             <button
                                                                                 onClick={() => saveEdit(key)}
-                                                                                className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-xs mr-1"
+                                                                                className={`px-2 py-1 ${theme.accentBg} ${theme.accentHover} rounded text-xs mr-1 text-white`}
                                                                             >
                                                                                 Save
                                                                             </button>
                                                                             <button
                                                                                 onClick={cancelEdit}
-                                                                                className="px-2 py-1 bg-gray-600 hover:bg-gray-500 rounded text-xs"
+                                                                                className={`px-2 py-1 ${theme.bgSecondary} hover:opacity-80 rounded text-xs ${theme.textMuted}`}
                                                                             >
                                                                                 Cancel
                                                                             </button>
@@ -2299,23 +2449,23 @@
                                                                 ) : (
                                                                     <>
                                                                         <td className="p-2">
-                                                                            <span className="text-green-400 font-semibold">{key}</span>
+                                                                            <span className={`${theme.accent} font-semibold`}>{key}</span>
                                                                         </td>
-                                                                        <td className="p-2">{value.ratio}</td>
+                                                                        <td className={`p-2 ${theme.text}`}>{value.ratio}</td>
                                                                         <td className="p-2">
-                                                                            <span className="text-green-400 font-semibold">{value.to}</span>
+                                                                            <span className={`${theme.accent} font-semibold`}>{value.to}</span>
                                                                         </td>
-                                                                        <td className="p-2 text-gray-400 text-xs">{value.note}</td>
+                                                                        <td className={`p-2 ${theme.textMuted} text-xs`}>{value.note}</td>
                                                                         <td className="p-2 text-right whitespace-nowrap">
                                                                             <button
                                                                                 onClick={() => startEditing(key, value)}
-                                                                                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 rounded text-xs mr-1"
+                                                                                className={`px-2 py-1 ${theme.accentBg} ${theme.accentHover} rounded text-xs mr-1 text-white`}
                                                                             >
                                                                                 Edit
                                                                             </button>
                                                                             <button
                                                                                 onClick={() => deleteCustomConversion(key)}
-                                                                                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs"
+                                                                                className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-xs text-white"
                                                                             >
                                                                                 Del
                                                                             </button>
@@ -2328,7 +2478,7 @@
                                                 </table>
                                             </div>
                                         ) : (
-                                            <p className="text-gray-500 italic text-center py-8">
+                                            <p className={`${theme.textMuted} italic text-center py-8`}>
                                                 No custom conversions yet. Add conversions above to handle ambiguous measurements like "1 garlic bulb", "1 pinch salt", or "1 medium onion".
                                                 <br/><br/>
                                                 When you paste recipes with these terms, the app will warn you they're ambiguous and prompt you to define them here.
@@ -2337,72 +2487,123 @@
                                     </div>
                                 </div>
                                 
+                                {/* Appearance Section */}
+                                <div className="mb-8">
+                                    <h3 className={`${fontSize.heading} font-bold ${theme.accent} mb-3`}>Appearance</h3>
+                                    <p className={`${theme.textMuted} ${fontSize.mb}`}>
+                                        Customize the look and feel of the application.
+                                    </p>
+                                    
+                                    <div className={`${theme.bgTertiary} ${fontSize.padding} rounded-lg ${fontSize.space}`}>
+                                        {/* Color Theme */}
+                                        <div>
+                                            <label className={`block ${theme.text} font-medium mb-2`}>Color Theme</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {Object.entries(THEMES).map(([key, t]) => (
+                                                    <button
+                                                        key={key}
+                                                        onClick={() => updateThemeSetting('colorTheme', key)}
+                                                        className={`px-3 py-1.5 rounded-lg border-2 transition-all flex items-center gap-2 ${
+                                                            themeSettings.colorTheme === key 
+                                                                ? 'border-white ring-1 ring-white/30' 
+                                                                : `border-transparent hover:${theme.border}`
+                                                        }`}
+                                                    >
+                                                        <div className={`w-4 h-4 rounded-full ${t.accentBg}`}></div>
+                                                        <span className={`text-sm ${theme.textMuted}`}>{t.name}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        
+                                        {/* Font Size */}
+                                        <div>
+                                            <label className={`block ${theme.text} font-medium mb-2`}>Font Size</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {['tiny', 'small', 'medium', 'large'].map((size) => (
+                                                    <button
+                                                        key={size}
+                                                        onClick={() => updateThemeSetting('fontSize', size)}
+                                                        className={`px-3 py-1.5 rounded-lg border transition-all capitalize ${
+                                                            themeSettings.fontSize === size
+                                                                ? `${theme.accentBg} border-transparent text-white`
+                                                                : `${theme.bgSecondary} ${theme.border} ${theme.textMuted} hover:opacity-80`
+                                                        }`}
+                                                    >
+                                                        {size}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
                                 {/* Display Rules Section */}
                                 <div className="mb-8">
-                                    <h3 className="text-xl font-bold text-green-400 mb-3">Display Rules</h3>
-                                    <p className="text-gray-400 mb-4">
+                                    <h3 className={`${fontSize.heading} font-bold ${theme.accent} mb-3`}>Display Rules</h3>
+                                    <p className={`${theme.textMuted} ${fontSize.mb}`}>
                                         Control how scaled measurements are formatted. These rules help keep outputs practical for kitchen use.
                                     </p>
                                     
-                                    <div className="bg-gray-700 p-6 rounded-lg space-y-4">
-                                        <label className="flex items-center gap-3 cursor-pointer">
+                                    <div className={`${theme.bgTertiary} ${fontSize.padding} rounded-lg ${fontSize.space}`}>
+                                        <label className={`flex items-center ${fontSize.gap} cursor-pointer`}>
                                             <input
                                                 type="checkbox"
                                                 checked={displayRules.noFractionalQuarts}
                                                 onChange={(e) => updateDisplayRule('noFractionalQuarts', e.target.checked)}
-                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                                className={`w-4 h-4 rounded ${theme.bgSecondary} ${theme.border}`}
                                             />
                                             <div>
-                                                <span className="text-gray-200 font-medium">No fractional quarts</span>
-                                                <p className="text-gray-400 text-sm">Show "2 qt + 2 cups" instead of "2½ qt"</p>
+                                                <span className={`${theme.text} font-medium`}>No fractional quarts</span>
+                                                <p className={`${theme.textMuted} text-sm`}>Show "2 qt + 2 cups" instead of "2½ qt"</p>
                                             </div>
                                         </label>
                                         
-                                        <label className="flex items-center gap-3 cursor-pointer">
+                                        <label className={`flex items-center ${fontSize.gap} cursor-pointer`}>
                                             <input
                                                 type="checkbox"
                                                 checked={displayRules.noFractionalGallons}
                                                 onChange={(e) => updateDisplayRule('noFractionalGallons', e.target.checked)}
-                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                                className={`w-4 h-4 rounded ${theme.bgSecondary} ${theme.border}`}
                                             />
                                             <div>
-                                                <span className="text-gray-200 font-medium">No fractional gallons</span>
-                                                <p className="text-gray-400 text-sm">Show "1 gal + 2 qt" instead of "1½ gal"</p>
+                                                <span className={`${theme.text} font-medium`}>No fractional gallons</span>
+                                                <p className={`${theme.textMuted} text-sm`}>Show "1 gal + 2 qt" instead of "1½ gal"</p>
                                             </div>
                                         </label>
                                         
-                                        <label className="flex items-center gap-3 cursor-pointer">
+                                        <label className={`flex items-center ${fontSize.gap} cursor-pointer`}>
                                             <input
                                                 type="checkbox"
                                                 checked={displayRules.noFractionalPounds}
                                                 onChange={(e) => updateDisplayRule('noFractionalPounds', e.target.checked)}
-                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                                className={`w-4 h-4 rounded ${theme.bgSecondary} ${theme.border}`}
                                             />
                                             <div>
-                                                <span className="text-gray-200 font-medium">No fractional pounds</span>
-                                                <p className="text-gray-400 text-sm">Show "2 lb + 8 oz" instead of "2½ lb"</p>
+                                                <span className={`${theme.text} font-medium`}>No fractional pounds</span>
+                                                <p className={`${theme.textMuted} text-sm`}>Show "2 lb + 8 oz" instead of "2½ lb"</p>
                                             </div>
                                         </label>
                                         
-                                        <label className="flex items-center gap-3 cursor-pointer">
+                                        <label className={`flex items-center ${fontSize.gap} cursor-pointer`}>
                                             <input
                                                 type="checkbox"
                                                 checked={displayRules.roundEggsUp}
                                                 onChange={(e) => updateDisplayRule('roundEggsUp', e.target.checked)}
-                                                className="w-5 h-5 rounded bg-gray-600 border-gray-500 text-green-500 focus:ring-green-400"
+                                                className={`w-4 h-4 rounded ${theme.bgSecondary} ${theme.border}`}
                                             />
                                             <div>
-                                                <span className="text-gray-200 font-medium">Round eggs up</span>
-                                                <p className="text-gray-400 text-sm">Show "3 eggs" instead of "2.3 eggs" (rounds up when &gt; 0.25)</p>
+                                                <span className={`${theme.text} font-medium`}>Round eggs up</span>
+                                                <p className={`${theme.textMuted} text-sm`}>Show "3 eggs" instead of "2.3 eggs" (rounds up when &gt; 0.25)</p>
                                             </div>
                                         </label>
                                     </div>
                                 </div>
                                 
                                 {/* Common Examples Section */}
-                                <div className="bg-gray-700 p-6 rounded-lg">
-                                    <h4 className="font-semibold text-gray-200 mb-3">💡 Common Conversion Examples</h4>
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm text-gray-300">
+                                <div className={`${theme.bgTertiary} ${fontSize.padding} rounded-lg`}>
+                                    <h4 className={`font-semibold ${theme.text} mb-3`}>💡 Common Conversion Examples</h4>
+                                    <div className={`grid grid-cols-1 md:grid-cols-2 ${fontSize.gap} ${fontSize.base} ${theme.textMuted}`}>
                                         <div>• 1 garlic bulb ⇄ 10-12 cloves</div>
                                         <div>• 1 medium onion ⇄ 1.5 cups chopped</div>
                                         <div>• 1 large onion ⇄ 2 cups chopped</div>
@@ -2419,41 +2620,41 @@
                         {/* Recipe Scaler Page */}
                         {currentPage === 'scaler' && (
                             <>
-                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className={`grid grid-cols-1 lg:grid-cols-2 ${fontSize.gap}`}>
                             {/* Input Section */}
-                            <div className="bg-gray-800 rounded-lg shadow-xl p-6">
-                                <div className="flex justify-between items-center mb-4">
-                                    <h2 className="text-xl font-bold text-green-400">Input</h2>
+                            <div className={`${theme.bgSecondary} rounded-lg shadow-xl ${fontSize.padding}`}>
+                                <div className={`flex justify-between items-center ${fontSize.mb}`}>
+                                    <h2 className={`${fontSize.heading} font-bold ${theme.accent}`}>Input</h2>
                                     <button
                                         onClick={() => setShowSaved(!showSaved)}
-                                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 rounded text-sm"
+                                        className={`${fontSize.paddingX} ${fontSize.paddingY} ${theme.accentBg} ${theme.accentHover} rounded text-sm text-white`}
                                     >
                                         {showSaved ? 'Hide' : 'Saved Recipes'}
                                     </button>
                                 </div>
 
                                 {showSaved && (
-                                    <div className="mb-4 p-4 bg-gray-700 rounded max-h-64 overflow-y-auto">
-                                        <p className="text-xs text-yellow-400/80 mb-3">⚠ Saved locally in browser — clears if you clear site data</p>
+                                    <div className={`${fontSize.mb} ${fontSize.padding} ${theme.bgTertiary} rounded max-h-64 overflow-y-auto`}>
+                                        <p className="text-xs text-yellow-400/80 mb-2">⚠ Saved locally in browser — clears if you clear site data</p>
                                         {savedRecipes.length === 0 ? (
-                                            <p className="text-gray-400">No saved recipes</p>
+                                            <p className={theme.textMuted}>No saved recipes</p>
                                         ) : (
                                             savedRecipes.map(recipe => (
-                                                <div key={recipe.id} className="mb-2 p-2 bg-gray-600 rounded flex justify-between items-center">
+                                                <div key={recipe.id} className={`mb-2 ${fontSize.padding} ${theme.bgSecondary} rounded flex justify-between items-center`}>
                                                     <div>
-                                                        <div className="font-bold">{recipe.name}</div>
-                                                        <div className="text-sm text-gray-400">{recipe.servings} servings</div>
+                                                        <div className={`font-bold ${theme.text}`}>{recipe.name}</div>
+                                                        <div className={`text-sm ${theme.textMuted}`}>{recipe.servings} servings</div>
                                                     </div>
-                                                    <div className="flex gap-2">
+                                                    <div className={`flex ${fontSize.gap}`}>
                                                         <button
                                                             onClick={() => loadRecipe(recipe)}
-                                                            className="px-2 py-1 bg-green-600 hover:bg-green-700 rounded text-sm"
+                                                            className={`px-2 py-1 ${theme.accentBg} ${theme.accentHover} rounded text-sm text-white`}
                                                         >
                                                             Load
                                                         </button>
                                                         <button
                                                             onClick={() => deleteRecipe(recipe.id)}
-                                                            className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-sm"
+                                                            className="px-2 py-1 bg-red-600 hover:bg-red-700 rounded text-sm text-white"
                                                         >
                                                             Delete
                                                         </button>
@@ -2465,7 +2666,7 @@
                                 )}
 
                                 <div className="flex justify-between items-center mb-2">
-                                    <label className="block text-sm text-gray-400">Paste ingredients here</label>
+                                    <label className={`block text-sm ${theme.textMuted}`}>Paste ingredients here</label>
                                     {inputText && (
                                         <button
                                             onClick={() => {
@@ -2485,33 +2686,33 @@
                                     value={inputText}
                                     onChange={(e) => setInputText(e.target.value)}
                                     placeholder="Paste ingredients here... (e.g., 2 cups flour, 1/2 tsp salt, 250g sugar)"
-                                    className="w-full h-64 bg-gray-700 text-gray-100 p-3 rounded border border-gray-600 focus:border-green-400 focus:outline-none font-mono text-sm"
+                                    className={`w-full h-64 ${theme.bgTertiary} ${theme.text} p-3 rounded border ${theme.border} focus:outline-none focus:ring-1 font-mono ${fontSize.base}`}
                                 />
 
-                                <div className="mt-4 grid grid-cols-2 gap-4">
+                                <div className={`mt-3 grid grid-cols-2 ${fontSize.gap}`}>
                                     <div>
-                                        <label className="block text-sm text-gray-400 mb-1">Original Servings</label>
+                                        <label className={`block text-sm ${theme.textMuted} mb-1`}>Original Servings</label>
                                         <input
                                             type="number"
                                             value={originalServings}
                                             onChange={(e) => setOriginalServings(e.target.value === '' ? '' : Number(e.target.value))}
                                             min="1"
-                                            className="w-full bg-gray-700 text-gray-100 p-2 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
+                                            className={`w-full ${theme.bgTertiary} ${theme.text} p-2 rounded border ${theme.border} focus:outline-none focus:ring-1`}
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm text-gray-400 mb-1">Target Servings</label>
+                                        <label className={`block text-sm ${theme.textMuted} mb-1`}>Target Servings</label>
                                         <input
                                             type="number"
                                             value={targetServings}
                                             onChange={(e) => setTargetServings(e.target.value === '' ? '' : Number(e.target.value))}
                                             min="1"
-                                            className="w-full bg-gray-700 text-gray-100 p-2 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
+                                            className={`w-full ${theme.bgTertiary} ${theme.text} p-2 rounded border ${theme.border} focus:outline-none focus:ring-1`}
                                         />
                                     </div>
                                 </div>
 
-                                <div className="mt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                                     <label className="flex items-center cursor-pointer">
                                         <input
                                             type="checkbox"
@@ -2519,16 +2720,16 @@
                                             onChange={(e) => setUseMetric(e.target.checked)}
                                             className="mr-2"
                                         />
-                                        <span className="text-sm text-gray-400">Use Metric Units</span>
+                                        <span className={`text-sm ${theme.textMuted}`}>Use Metric Units</span>
                                     </label>
                                     
                                     <div className="flex flex-col gap-1">
                                         <div className="flex items-center gap-2">
-                                            <span className="text-sm text-gray-400">When recipe says "1-2 cups":</span>
+                                            <span className={`text-sm ${theme.textMuted}`}>When recipe says "1-2 cups":</span>
                                             <select
                                                 value={rangeHandling}
                                                 onChange={(e) => setRangeHandling(e.target.value)}
-                                                className="bg-gray-700 text-gray-100 px-2 py-1 rounded border border-gray-600 focus:border-green-400 focus:outline-none text-sm"
+                                                className={`${theme.bgTertiary} ${theme.text} px-2 py-1 rounded border ${theme.border} focus:outline-none focus:ring-1 text-sm`}
                                             >
                                                 <option value="low">Use 1 (low)</option>
                                                 <option value="average">Use 1.5 (average)</option>
@@ -2538,17 +2739,17 @@
                                     </div>
                                 </div>
 
-                                <div className="mt-4 flex gap-2">
+                                <div className="mt-3 flex gap-2">
                                     <input
                                         type="text"
                                         value={recipeName}
                                         onChange={(e) => setRecipeName(e.target.value)}
                                         placeholder="Recipe name"
-                                        className="flex-1 bg-gray-700 text-gray-100 p-2 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
+                                        className={`flex-1 ${theme.bgTertiary} ${theme.text} p-2 rounded border ${theme.border} focus:outline-none focus:ring-1`}
                                     />
                                     <button
                                         onClick={saveRecipe}
-                                        className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-semibold"
+                                        className={`${fontSize.paddingX} ${fontSize.paddingY} ${theme.accentBg} ${theme.accentHover} rounded font-semibold text-white`}
                                     >
                                         Save Recipe
                                     </button>
@@ -2556,26 +2757,22 @@
                             </div>
 
                             {/* Output Section */}
-                            <div className="bg-gray-800 rounded-lg shadow-xl p-4 sm:p-6">
-                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-                                    <h2 className="text-2xl font-bold text-green-400">
+                            <div className={`${theme.bgSecondary} rounded-lg shadow-xl ${fontSize.padding}`}>
+                                <div className={`flex flex-col sm:flex-row sm:justify-between sm:items-center ${fontSize.gap} ${fontSize.mb}`}>
+                                    <h2 className={`${fontSize.large} font-bold ${theme.accent}`}>
                                         {targetServings} {targetServings === 1 ? 'Serving' : 'Servings'} Scaled
                                     </h2>
                                     {parsedIngredients.length > 0 && (
-                                        <div className="flex flex-wrap gap-2">
+                                        <div className={`flex flex-wrap ${fontSize.gap}`}>
                                             <button
                                                 onClick={() => setCookingMode(!cookingMode)}
-                                                className={`px-3 py-1.5 rounded text-sm transition-colors ${
-                                                    cookingMode 
-                                                        ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' 
-                                                        : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                                                }`}
+                                                className={`${fontSize.paddingX} ${fontSize.paddingY} rounded text-sm transition-colors ${theme.bgTertiary} ${theme.textMuted} hover:opacity-80`}
                                             >
                                                 {cookingMode ? 'Show Details' : 'Edit Mode'}
                                             </button>
                                             <button
                                                 onClick={copyToClipboard}
-                                                className="px-3 py-1.5 bg-green-600 hover:bg-green-700 rounded text-sm"
+                                                className={`${fontSize.paddingX} ${fontSize.paddingY} ${theme.accentBg} ${theme.accentHover} rounded text-sm text-white`}
                                             >
                                                 {copySuccess ? '✓ Copied!' : '📋 Copy'}
                                             </button>
@@ -2584,12 +2781,12 @@
                                 </div>
 
                                 {parsedIngredients.length === 0 ? (
-                                    <div className="text-gray-400 text-center py-12">
+                                    <div className={`${theme.textMuted} text-center py-8`}>
                                         Paste ingredients above to see scaled results
                                     </div>
                                 ) : (
                                     <>
-                                        <div className="space-y-3">
+                                        <div className={fontSize.space}>
                                             {parsedIngredients.map((ingredient, idx) => {
                                                 const scaled = scaleIngredient(ingredient, idx);
                                                 const unitOptions = getUnitOptions(ingredient);
@@ -2602,36 +2799,31 @@
                                                         className="group"
                                                     >
                                                         {/* Main ingredient line */}
-                                                        <div className="flex items-start gap-3 py-2 border-b border-gray-700/50">
+                                                        <div className={`flex items-start ${fontSize.gap} ${fontSize.paddingY} border-b ${theme.border}/50`}>
                                                             <button
                                                                 onClick={() => toggleIngredientChecked(idx)}
-                                                                className="flex-shrink-0 w-5 h-5 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                className="flex-shrink-0 w-4 h-4 mt-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
                                                             >
                                                                 {isChecked ? (
-                                                                    <div className="w-5 h-5 rounded bg-green-600/30 flex items-center justify-center text-green-400 text-xs">✓</div>
+                                                                    <div className="w-4 h-4 rounded bg-green-600/30 flex items-center justify-center text-green-400 text-xs">✓</div>
                                                                 ) : (
-                                                                    <div className="w-5 h-5 rounded border border-gray-600"></div>
+                                                                    <div className={`w-4 h-4 rounded border ${theme.border}`}></div>
                                                                 )}
                                                             </button>
                                                             
                                                             <div className={`flex-1 min-w-0 ${isChecked ? 'opacity-40 line-through' : ''}`}>
                                                                 {ingredient.type === 'seasoning' ? (
-                                                                    <div className="text-base leading-relaxed">
-                                                                        <span className="text-gray-300">{ingredient.ingredient}</span>
-                                                                        <span className="text-gray-500 ml-2 italic">to taste</span>
+                                                                    <div className={`${fontSize.ingredient} leading-snug`}>
+                                                                        <span className={theme.textMuted}>{ingredient.ingredient}</span>
+                                                                        <span className={`${theme.textMuted} ml-1 italic opacity-70`}>to taste</span>
                                                                     </div>
                                                                 ) : (
-                                                                    <div className="text-base leading-relaxed">
-                                                                        <span className="text-green-400 font-medium">
+                                                                    <div className={`${fontSize.ingredient} leading-snug`}>
+                                                                        <span className={`${theme.accent} font-medium`}>
                                                                             {formatCompoundMeasurement(scaled)}
                                                                         </span>
-                                                                        <span className="text-gray-200 ml-2">
+                                                                        <span className={`${theme.text} ml-1`}>
                                                                             {(() => {
-                                                                                // DEBUG: Log ingredient name
-                                                                                if (ingredient.ingredient.includes('salt') || ingredient.ingredient.includes('butter')) {
-                                                                                    console.log('DEBUG ingredient name:', ingredient.ingredient);
-                                                                                    console.log('DEBUG full ingredient object:', JSON.stringify(ingredient, null, 2));
-                                                                                }
                                                                                 return ingredient.ingredient;
                                                                             })()}
                                                                         </span>
@@ -2641,7 +2833,7 @@
                                                                             const scaledAlt = scaleAlternative(ingredient.alternative, scaleFactor);
                                                                             if (scaledAlt) {
                                                                                 return (
-                                                                                    <span className="text-gray-400 ml-2 text-sm">
+                                                                                    <span className={`${theme.textMuted} ml-1 text-sm`}>
                                                                                         (or {formatCompoundMeasurement(scaledAlt)} {ingredient.alternative.ingredient})
                                                                                     </span>
                                                                                 );
@@ -2649,7 +2841,7 @@
                                                                         })()}
                                                                         {/* Show conversion in parentheses */}
                                                                         {scaled.converted && scaled.originalScaledValue && (
-                                                                            <span className="text-gray-500 ml-2 text-sm">
+                                                                            <span className={`${theme.textMuted} ml-1 text-sm opacity-70`}>
                                                                                 ({formatNumber(scaled.originalScaledValue)} {pluralize(scaled.originalScaledValue, scaled.originalUnit === 'count' ? ingredient.ingredient.split(' ')[0] : scaled.originalUnit)})
                                                                             </span>
                                                                         )}
@@ -2658,9 +2850,9 @@
                                                                 
                                                                 {/* Edit mode controls - only visible when edit mode is on */}
                                                                 {cookingMode && (
-                                                                    <div className="mt-2 flex flex-wrap gap-2 items-center text-xs">
+                                                                    <div className={`mt-1 flex flex-wrap ${fontSize.gap} items-center text-xs`}>
                                                                         {ingredient.isRange && ingredient.rangeOriginal && (
-                                                                            <span className="text-yellow-500 bg-yellow-900/20 px-2 py-0.5 rounded">
+                                                                            <span className="text-yellow-500 bg-yellow-900/20 px-1.5 py-0.5 rounded">
                                                                                 range: {ingredient.rangeOriginal} {ingredient.unit !== 'count' ? ingredient.unit : ''}
                                                                             </span>
                                                                         )}
@@ -2668,7 +2860,7 @@
                                                                             <select
                                                                                 value={unitOverrides[idx] || 'auto'}
                                                                                 onChange={(e) => setUnitOverride(idx, e.target.value === 'auto' ? null : e.target.value)}
-                                                                                className="bg-gray-700 text-gray-300 px-2 py-0.5 rounded border border-gray-600 focus:border-green-400 focus:outline-none"
+                                                                                className={`${theme.bgTertiary} ${theme.textMuted} px-1.5 py-0.5 rounded border ${theme.border} focus:outline-none`}
                                                                             >
                                                                                 <option value="auto">auto</option>
                                                                                 {unitOptions.map(unit => (
@@ -2676,7 +2868,7 @@
                                                                                 ))}
                                                                             </select>
                                                                         )}
-                                                                        <span className="text-gray-600">
+                                                                        <span className={`${theme.textMuted} opacity-50`}>
                                                                             originally {ingredient.quantity} {ingredient.unit}
                                                                         </span>
                                                                     </div>
@@ -2684,13 +2876,13 @@
                                                                 
                                                                 {/* Warning - always visible if present */}
                                                                 {showWarning && !cookingMode && (
-                                                                    <div className="mt-1.5 text-xs text-orange-400/80">
+                                                                    <div className="mt-1 text-xs text-orange-400/80">
                                                                         ⚠ {getAmbiguityWarning(ingredient)}
                                                                     </div>
                                                                 )}
                                                                 
                                                                 {ingredient.notes && (
-                                                                    <div className="mt-1 text-xs text-gray-500">
+                                                                    <div className={`mt-0.5 text-xs ${theme.textMuted} opacity-60`}>
                                                                         {ingredient.notes}
                                                                     </div>
                                                                 )}
@@ -2702,7 +2894,7 @@
                                         </div>
                                         
                                         {unparsedLines.length > 0 && cookingMode && (
-                                            <div className="mt-6 p-3 bg-red-900/20 border border-red-700/50 rounded text-sm">
+                                            <div className={`mt-4 ${fontSize.padding} bg-red-900/20 border border-red-700/50 rounded text-sm`}>
                                                 <div className="text-red-400 font-medium mb-1">Couldn't parse:</div>
                                                 {unparsedLines.map((line, idx) => (
                                                     <div key={idx} className="text-red-300/80 text-xs">• {line}</div>
@@ -2711,7 +2903,7 @@
                                         )}
                                         
                                         {cookingMode && (
-                                            <div className="mt-6 pt-4 border-t border-gray-700/50 text-xs text-gray-500">
+                                            <div className={`mt-4 pt-3 border-t ${theme.border}/50 text-xs ${theme.textMuted}`}>
                                                 {parsedIngredients.length} ingredients • {((targetServings || 1) / (originalServings || 1)).toFixed(2)}x scale
                                             </div>
                                         )}
@@ -2720,8 +2912,8 @@
                             </div>
                         </div>
 
-                        <div className="mt-6 bg-gray-800 rounded-lg shadow-xl p-4 text-sm text-gray-400">
-                            <strong className="text-green-400">Tips:</strong>
+                        <div className={`mt-4 ${theme.bgSecondary} rounded-lg shadow-xl ${fontSize.padding} ${fontSize.base} ${theme.textMuted}`}>
+                            <strong className={theme.accent}>Tips:</strong>
                             <ul className="mt-2 space-y-1 list-disc list-inside">
                                 <li>Supports formats like: "2 cups flour", "1/2 tsp salt", "2 1/2 cups water", "250g sugar", "3 eggs"</li>
                                 <li>Handles whole items: "2 potatoes", "1 onion", "4 chicken breasts"</li>
