@@ -145,6 +145,8 @@
             'tsps': 1,
             'pinch': 0.125,  // ~1/8 tsp
             'dash': 0.125,   // ~1/8 tsp
+            'drop': 0.01,    // ~0.05 mL, roughly 1/100 tsp
+            'drops': 0.01,
             'tbsp': 3,
             'tablespoon': 3,
             'tablespoons': 3,
@@ -683,34 +685,67 @@
             // Store original for "to taste" handling
             const originalLine = line;
             
-            // Parse parenthetical content for alternatives (e.g., "or 4 thighs")
-            const parenMatch = line.match(/^(.+?)(\([^)]+\).*)$/);
+            // Parse parenthetical content for alternatives (e.g., "or 4 thighs") or equivalents (e.g., "200g")
+            const parenMatch = line.match(/^(.+?)(\([^)]+\))(.*)$/);
             let notes = '';
             let alternative = null; // Will store parsed alternative ingredient
             
             if (parenMatch) {
-                line = parenMatch[1].trim();
+                const beforeParen = parenMatch[1].trim();
                 const parenContent = parenMatch[2];
-                notes = parenContent;
+                const afterParen = parenMatch[3].trim();
                 
-                // Check if parentheses contain an alternative ingredient (starts with "or")
-                // Examples: "(or 4 thighs)", "(or 2 cups)", "(or 3-4 chicken breasts)"
-                const altMatch = parenContent.match(/\(or\s+(.+?)\)/i);
-                if (altMatch) {
-                    const altText = altMatch[1].trim();
-                    // Try to parse the alternative as if it's a standalone ingredient
-                    // We'll recursively call parseIngredient on just the quantity/unit part
-                    const altParsed = parseIngredient(altText, rangeMode);
-                    if (altParsed && altParsed.quantity) {
-                        alternative = {
-                            quantity: altParsed.quantity,
-                            unit: altParsed.unit,
-                            ingredient: altParsed.ingredient,
-                            type: altParsed.type,
-                            baseValue: altParsed.baseValue,
-                            isRange: altParsed.isRange,
-                            rangeOriginal: altParsed.rangeOriginal
-                        };
+                // Check if this is a weight/volume equivalent like "(200g)" or "(1 cup)"
+                // These should be noted but the ingredient comes AFTER the paren
+                const equivMatch = parenContent.match(/^\((\d+\.?\d*)\s*(g|kg|oz|lb|lbs|ml|l|cup|cups|tbsp|tsp)\)$/i);
+                if (equivMatch && afterParen) {
+                    // This is "1 cup (200g) brown sugar" format
+                    // Keep "1 cup brown sugar" as the line, note the equivalent
+                    line = beforeParen + ' ' + afterParen;
+                    notes = parenContent; // Store "(200g)" as a note
+                } else if (afterParen) {
+                    // Paren in middle with content after - reconstruct without paren
+                    line = beforeParen + ' ' + afterParen;
+                    notes = parenContent;
+                    
+                    // Check if parentheses contain an alternative ingredient (starts with "or")
+                    const altMatch = parenContent.match(/\(or\s+(.+?)\)/i);
+                    if (altMatch) {
+                        const altText = altMatch[1].trim();
+                        const altParsed = parseIngredient(altText, rangeMode);
+                        if (altParsed && altParsed.quantity) {
+                            alternative = {
+                                quantity: altParsed.quantity,
+                                unit: altParsed.unit,
+                                ingredient: altParsed.ingredient,
+                                type: altParsed.type,
+                                baseValue: altParsed.baseValue,
+                                isRange: altParsed.isRange,
+                                rangeOriginal: altParsed.rangeOriginal
+                            };
+                        }
+                    }
+                } else {
+                    // Paren at end - original behavior
+                    line = beforeParen;
+                    notes = parenContent;
+                    
+                    // Check if parentheses contain an alternative ingredient (starts with "or")
+                    const altMatch = parenContent.match(/\(or\s+(.+?)\)/i);
+                    if (altMatch) {
+                        const altText = altMatch[1].trim();
+                        const altParsed = parseIngredient(altText, rangeMode);
+                        if (altParsed && altParsed.quantity) {
+                            alternative = {
+                                quantity: altParsed.quantity,
+                                unit: altParsed.unit,
+                                ingredient: altParsed.ingredient,
+                                type: altParsed.type,
+                                baseValue: altParsed.baseValue,
+                                isRange: altParsed.isRange,
+                                rangeOriginal: altParsed.rangeOriginal
+                            };
+                        }
                     }
                 }
             }
