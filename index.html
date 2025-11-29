@@ -340,8 +340,7 @@
          * - Over 8000 mL → gallons + cups if needed
          */
         const smartConvertVolume = (tsp, useMetric, ingredientName = '', rules = {}, allowed = null) => {
-            // Convert from tsp (internal base) to mL (Stage 1 base)
-            const ml = tsp * 4.92892; // 1 tsp = 4.92892 mL
+            // Work in tsp (internal base unit) - no ml conversion to avoid rounding errors
             
             // Default rules
             const noFractionalQuarts = rules.noFractionalQuarts !== false; // default true
@@ -355,8 +354,18 @@
                 return allowed[key] !== false;
             };
             
+            // Unit thresholds in tsp
+            const TSP_PER_TBSP = 3;
+            const TSP_PER_CUP = 48;
+            const TSP_PER_PINT = 96;
+            const TSP_PER_QUART = 192;
+            const TSP_PER_GALLON = 768;
+            const TSP_PER_ML = 0.202884;
+            const TSP_PER_LITER = 202.884;
+            
             if (useMetric) {
                 // Metric: display in mL or L
+                const ml = tsp / TSP_PER_ML;
                 if (ml < 1) {
                     return { value: 0, unit: 'pinch' };
                 }
@@ -365,49 +374,45 @@
                         return { value: Math.round(ml), unit: 'ml' };
                     }
                 }
-                // >= 1000 mL: use liters
                 if (isAllowed('liter')) {
-                    const liters = ml / 1000;
+                    const liters = tsp / TSP_PER_LITER;
                     if (liters < 10) {
                         return { value: Math.round(liters * 10) / 10, unit: 'L' };
                     }
                     return { value: Math.round(liters), unit: 'L' };
                 }
-                // Fallback to ml if liter not allowed
                 return { value: Math.round(ml), unit: 'ml' };
             }
             
-            // US Customary formatting
+            // US Customary formatting - all thresholds in tsp
             
-            // Under 15 mL → teaspoons
-            if (ml < 15) {
-                if (ml < 0.5) {
+            // Under 3 tsp (1 tbsp) -> teaspoons
+            if (tsp < TSP_PER_TBSP) {
+                if (tsp < 0.1) {
                     return { value: 0, unit: 'pinch' };
                 }
                 if (isAllowed('tsp')) {
-                    const tspVal = ml / 4.92892;
-                    const rounded = Math.round(tspVal * 4) / 4; // nearest ¼ tsp
+                    const rounded = Math.round(tsp * 4) / 4; // nearest 1/4 tsp
                     return { value: rounded, unit: 'tsp' };
                 }
             }
             
-            // 15–90 mL → tablespoons (if allowed, else fall through)
-            if (ml < 90 && isAllowed('tbsp')) {
-                const tbsp = ml / 14.787;
-                const rounded = Math.round(tbsp * 4) / 4; // nearest ¼ tbsp
+            // 3-18 tsp (1-6 tbsp) -> tablespoons (if allowed)
+            if (tsp < 18 && isAllowed('tbsp')) {
+                const tbsp = tsp / TSP_PER_TBSP;
+                const rounded = Math.round(tbsp * 4) / 4; // nearest 1/4 tbsp
                 return { value: rounded, unit: 'tbsp' };
             }
             
             // If tbsp not allowed but tsp is, use tsp for small amounts
-            if (ml < 90 && isAllowed('tsp')) {
-                const tspVal = ml / 4.92892;
-                const rounded = Math.round(tspVal * 4) / 4;
+            if (tsp < 18 && isAllowed('tsp')) {
+                const rounded = Math.round(tsp * 4) / 4;
                 return { value: rounded, unit: 'tsp' };
             }
             
-            // 90–500 mL → cups (if allowed)
-            if (ml < 500 && isAllowed('cup')) {
-                const cups = ml / 240;
+            // 18-96 tsp (6 tbsp to 2 cups) -> cups (if allowed)
+            if (tsp < TSP_PER_PINT && isAllowed('cup')) {
+                const cups = tsp / TSP_PER_CUP;
                 const roundedQuarter = Math.round(cups * 4) / 4;
                 const roundedThird = Math.round(cups * 3) / 3;
                 const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird) 
@@ -415,21 +420,24 @@
                 return { value: rounded, unit: 'cup' };
             }
             
-            // 500–2000 mL → cups or quarts
-            if (ml < 2000) {
-                const cups = ml / 240;
+            // 96-384 tsp (2-8 cups / 1-2 quarts) -> cups or quarts
+            if (tsp < TSP_PER_QUART * 2) {
+                const cups = tsp / TSP_PER_CUP;
                 if (cups <= 4 && isAllowed('cup')) {
-                    const rounded = Math.round(cups * 4) / 4;
+                    const roundedQuarter = Math.round(cups * 4) / 4;
+                    const roundedThird = Math.round(cups * 3) / 3;
+                    const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird) 
+                        ? roundedQuarter : roundedThird;
                     return { value: rounded, unit: 'cup' };
                 }
                 // Use quarts for > 4 cups (if allowed)
                 if (isAllowed('quart')) {
-                    const quarts = ml / 946;
+                    const quarts = tsp / TSP_PER_QUART;
                     
                     if (noFractionalQuarts) {
                         const wholeQuarts = Math.floor(quarts);
-                        const remainingMl = ml - (wholeQuarts * 946);
-                        const remainingCups = remainingMl / 240;
+                        const remainingTsp = tsp - (wholeQuarts * TSP_PER_QUART);
+                        const remainingCups = remainingTsp / TSP_PER_CUP;
                         const roundedCups = Math.round(remainingCups * 4) / 4;
                         
                         if (wholeQuarts === 0) {
@@ -440,27 +448,29 @@
                         }
                         return { value: wholeQuarts, unit: 'qt' };
                     } else {
-                        // Allow fractional quarts
                         const rounded = Math.round(quarts * 4) / 4;
                         return { value: rounded, unit: 'qt' };
                     }
                 }
                 // Fallback to cups if quart not allowed
                 if (isAllowed('cup')) {
-                    const rounded = Math.round(cups * 4) / 4;
+                    const roundedQuarter = Math.round(cups * 4) / 4;
+                    const roundedThird = Math.round(cups * 3) / 3;
+                    const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird) 
+                        ? roundedQuarter : roundedThird;
                     return { value: rounded, unit: 'cup' };
                 }
             }
             
-            // 2000–8000 mL → quarts or cups (depending on what's allowed)
-            if (ml < 8000) {
+            // 384-1536 tsp (2-8 quarts) -> quarts or cups
+            if (tsp < TSP_PER_GALLON * 2) {
                 if (isAllowed('quart')) {
-                    const quarts = ml / 946;
+                    const quarts = tsp / TSP_PER_QUART;
                     
                     if (noFractionalQuarts) {
                         const wholeQuarts = Math.floor(quarts);
-                        const remainingMl = ml - (wholeQuarts * 946);
-                        const remainingCups = remainingMl / 240;
+                        const remainingTsp = tsp - (wholeQuarts * TSP_PER_QUART);
+                        const remainingCups = remainingTsp / TSP_PER_CUP;
                         const roundedCups = Math.round(remainingCups * 4) / 4;
                         
                         if (roundedCups >= 0.25 && isAllowed('cup')) {
@@ -474,36 +484,38 @@
                 }
                 // Fallback to cups if quart not allowed
                 if (isAllowed('cup')) {
-                    const cups = ml / 240;
-                    const rounded = Math.round(cups * 4) / 4;
+                    const cups = tsp / TSP_PER_CUP;
+                    const roundedQuarter = Math.round(cups * 4) / 4;
+                    const roundedThird = Math.round(cups * 3) / 3;
+                    const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird) 
+                        ? roundedQuarter : roundedThird;
                     return { value: rounded, unit: 'cup' };
                 }
                 // Fallback to ml
                 if (isAllowed('ml')) {
+                    const ml = tsp / TSP_PER_ML;
                     return { value: Math.round(ml), unit: 'ml' };
                 }
             }
             
-            // Over 8000 mL → gallons (with no-fractional rule)
+            // Over 1536 tsp (2+ gallons) -> gallons
             if (isAllowed('gallon')) {
-                const gallons = ml / 3785;
+                const gallons = tsp / TSP_PER_GALLON;
                 
                 if (noFractionalGallons) {
                     const wholeGallons = Math.floor(gallons);
-                    const remainingMl = ml - (wholeGallons * 3785);
+                    const remainingTsp = tsp - (wholeGallons * TSP_PER_GALLON);
                     
                     // Remainder as quarts or cups
-                    const remainingQuarts = remainingMl / 946;
+                    const remainingQuarts = remainingTsp / TSP_PER_QUART;
                     if (remainingQuarts >= 1 && noFractionalQuarts && isAllowed('quart')) {
                         const wholeRemainingQuarts = Math.floor(remainingQuarts);
-                        
-                        // gal + qt (skip cups for simplicity at this scale)
                         if (wholeRemainingQuarts > 0) {
                             return { value: wholeGallons, unit: 'gal', remainder: wholeRemainingQuarts, remainderUnit: 'qt' };
                         }
                     }
                     
-                    const remainingCups = remainingMl / 240;
+                    const remainingCups = remainingTsp / TSP_PER_CUP;
                     const roundedCups = Math.round(remainingCups * 4) / 4;
                     if (roundedCups >= 0.5 && isAllowed('cup')) {
                         return { value: wholeGallons, unit: 'gal', remainder: roundedCups, remainderUnit: 'cup' };
@@ -517,19 +529,25 @@
             
             // Fallback chain if gallon not allowed
             if (isAllowed('quart')) {
-                const quarts = ml / 946;
+                const quarts = tsp / TSP_PER_QUART;
                 return { value: Math.round(quarts * 4) / 4, unit: 'qt' };
             }
             if (isAllowed('cup')) {
-                const cups = ml / 240;
-                return { value: Math.round(cups * 4) / 4, unit: 'cup' };
+                const cups = tsp / TSP_PER_CUP;
+                const roundedQuarter = Math.round(cups * 4) / 4;
+                const roundedThird = Math.round(cups * 3) / 3;
+                const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird) 
+                    ? roundedQuarter : roundedThird;
+                return { value: rounded, unit: 'cup' };
             }
             if (isAllowed('liter')) {
-                const liters = ml / 1000;
+                const liters = tsp / TSP_PER_LITER;
                 return { value: Math.round(liters * 10) / 10, unit: 'L' };
             }
+            const ml = tsp / TSP_PER_ML;
             return { value: Math.round(ml), unit: 'ml' };
         };
+
 
         /* STAGE 2: FORMAT DRY POWDERS (from grams)
          * For flour, sugar, salt, powders
