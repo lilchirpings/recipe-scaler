@@ -339,7 +339,7 @@
          * - 2000–8000 mL → quarts
          * - Over 8000 mL → gallons + cups if needed
          */
-        const smartConvertVolume = (tsp, useMetric, ingredientName = '', rules = {}) => {
+        const smartConvertVolume = (tsp, useMetric, ingredientName = '', rules = {}, allowed = null) => {
             // Convert from tsp (internal base) to mL (Stage 1 base)
             const ml = tsp * 4.92892; // 1 tsp = 4.92892 mL
             
@@ -347,20 +347,34 @@
             const noFractionalQuarts = rules.noFractionalQuarts !== false; // default true
             const noFractionalGallons = rules.noFractionalGallons !== false; // default true
             
+            // Helper to check if unit is allowed
+            const isAllowed = (unit) => {
+                if (!allowed) return true;
+                const unitMap = { 'L': 'liter', 'qt': 'quart', 'gal': 'gallon' };
+                const key = unitMap[unit] || unit;
+                return allowed[key] !== false;
+            };
+            
             if (useMetric) {
                 // Metric: display in mL or L
                 if (ml < 1) {
                     return { value: 0, unit: 'pinch' };
                 }
-                if (ml < 1000) {
-                    return { value: Math.round(ml), unit: 'ml' };
+                if (ml < 1000 || !isAllowed('liter')) {
+                    if (isAllowed('ml')) {
+                        return { value: Math.round(ml), unit: 'ml' };
+                    }
                 }
                 // >= 1000 mL: use liters
-                const liters = ml / 1000;
-                if (liters < 10) {
-                    return { value: Math.round(liters * 10) / 10, unit: 'L' };
+                if (isAllowed('liter')) {
+                    const liters = ml / 1000;
+                    if (liters < 10) {
+                        return { value: Math.round(liters * 10) / 10, unit: 'L' };
+                    }
+                    return { value: Math.round(liters), unit: 'L' };
                 }
-                return { value: Math.round(liters), unit: 'L' };
+                // Fallback to ml if liter not allowed
+                return { value: Math.round(ml), unit: 'ml' };
             }
             
             // US Customary formatting
@@ -370,22 +384,30 @@
                 if (ml < 0.5) {
                     return { value: 0, unit: 'pinch' };
                 }
-                const tspVal = ml / 4.92892;
-                const rounded = Math.round(tspVal * 4) / 4; // nearest ¼ tsp
-                return { value: rounded, unit: 'tsp' };
+                if (isAllowed('tsp')) {
+                    const tspVal = ml / 4.92892;
+                    const rounded = Math.round(tspVal * 4) / 4; // nearest ¼ tsp
+                    return { value: rounded, unit: 'tsp' };
+                }
             }
             
-            // 15–90 mL → tablespoons
-            if (ml < 90) {
+            // 15–90 mL → tablespoons (if allowed, else fall through)
+            if (ml < 90 && isAllowed('tbsp')) {
                 const tbsp = ml / 14.787;
                 const rounded = Math.round(tbsp * 4) / 4; // nearest ¼ tbsp
                 return { value: rounded, unit: 'tbsp' };
             }
             
-            // 90–500 mL → cups
-            if (ml < 500) {
+            // If tbsp not allowed but tsp is, use tsp for small amounts
+            if (ml < 90 && isAllowed('tsp')) {
+                const tspVal = ml / 4.92892;
+                const rounded = Math.round(tspVal * 4) / 4;
+                return { value: rounded, unit: 'tsp' };
+            }
+            
+            // 90–500 mL → cups (if allowed)
+            if (ml < 500 && isAllowed('cup')) {
                 const cups = ml / 240;
-                // Round to nearest ¼ or ⅓ cup (whichever is closer)
                 const roundedQuarter = Math.round(cups * 4) / 4;
                 const roundedThird = Math.round(cups * 3) / 3;
                 const rounded = Math.abs(cups - roundedQuarter) < Math.abs(cups - roundedThird) 
@@ -396,85 +418,117 @@
             // 500–2000 mL → cups or quarts
             if (ml < 2000) {
                 const cups = ml / 240;
-                if (cups <= 4) {
+                if (cups <= 4 && isAllowed('cup')) {
                     const rounded = Math.round(cups * 4) / 4;
                     return { value: rounded, unit: 'cup' };
                 }
-                // Use quarts for > 4 cups
-                const quarts = ml / 946;
-                
-                if (noFractionalQuarts) {
-                    // Never show fractional quarts - always use qt + cups
-                    const wholeQuarts = Math.floor(quarts);
-                    const remainingMl = ml - (wholeQuarts * 946);
-                    const remainingCups = remainingMl / 240;
-                    const roundedCups = Math.round(remainingCups * 4) / 4;
+                // Use quarts for > 4 cups (if allowed)
+                if (isAllowed('quart')) {
+                    const quarts = ml / 946;
                     
-                    if (wholeQuarts === 0) {
-                        return { value: roundedCups, unit: 'cup' };
+                    if (noFractionalQuarts) {
+                        const wholeQuarts = Math.floor(quarts);
+                        const remainingMl = ml - (wholeQuarts * 946);
+                        const remainingCups = remainingMl / 240;
+                        const roundedCups = Math.round(remainingCups * 4) / 4;
+                        
+                        if (wholeQuarts === 0) {
+                            if (isAllowed('cup')) return { value: roundedCups, unit: 'cup' };
+                        }
+                        if (roundedCups >= 0.25 && isAllowed('cup')) {
+                            return { value: wholeQuarts, unit: 'qt', remainder: roundedCups, remainderUnit: 'cup' };
+                        }
+                        return { value: wholeQuarts, unit: 'qt' };
+                    } else {
+                        // Allow fractional quarts
+                        const rounded = Math.round(quarts * 4) / 4;
+                        return { value: rounded, unit: 'qt' };
                     }
-                    if (roundedCups >= 0.25) {
-                        return { value: wholeQuarts, unit: 'qt', remainder: roundedCups, remainderUnit: 'cup' };
-                    }
-                    return { value: wholeQuarts, unit: 'qt' };
-                } else {
-                    // Allow fractional quarts
-                    const rounded = Math.round(quarts * 4) / 4;
-                    return { value: rounded, unit: 'qt' };
+                }
+                // Fallback to cups if quart not allowed
+                if (isAllowed('cup')) {
+                    const rounded = Math.round(cups * 4) / 4;
+                    return { value: rounded, unit: 'cup' };
                 }
             }
             
-            // 2000–8000 mL → quarts (with no-fractional rule)
+            // 2000–8000 mL → quarts or cups (depending on what's allowed)
             if (ml < 8000) {
-                const quarts = ml / 946;
-                
-                if (noFractionalQuarts) {
-                    const wholeQuarts = Math.floor(quarts);
-                    const remainingMl = ml - (wholeQuarts * 946);
-                    const remainingCups = remainingMl / 240;
-                    const roundedCups = Math.round(remainingCups * 4) / 4;
+                if (isAllowed('quart')) {
+                    const quarts = ml / 946;
                     
-                    if (roundedCups >= 0.25) {
-                        return { value: wholeQuarts, unit: 'qt', remainder: roundedCups, remainderUnit: 'cup' };
+                    if (noFractionalQuarts) {
+                        const wholeQuarts = Math.floor(quarts);
+                        const remainingMl = ml - (wholeQuarts * 946);
+                        const remainingCups = remainingMl / 240;
+                        const roundedCups = Math.round(remainingCups * 4) / 4;
+                        
+                        if (roundedCups >= 0.25 && isAllowed('cup')) {
+                            return { value: wholeQuarts, unit: 'qt', remainder: roundedCups, remainderUnit: 'cup' };
+                        }
+                        return { value: wholeQuarts, unit: 'qt' };
+                    } else {
+                        const rounded = Math.round(quarts * 4) / 4;
+                        return { value: rounded, unit: 'qt' };
                     }
-                    return { value: wholeQuarts, unit: 'qt' };
-                } else {
-                    const rounded = Math.round(quarts * 4) / 4;
-                    return { value: rounded, unit: 'qt' };
+                }
+                // Fallback to cups if quart not allowed
+                if (isAllowed('cup')) {
+                    const cups = ml / 240;
+                    const rounded = Math.round(cups * 4) / 4;
+                    return { value: rounded, unit: 'cup' };
+                }
+                // Fallback to ml
+                if (isAllowed('ml')) {
+                    return { value: Math.round(ml), unit: 'ml' };
                 }
             }
             
             // Over 8000 mL → gallons (with no-fractional rule)
-            const gallons = ml / 3785;
-            
-            if (noFractionalGallons) {
-                const wholeGallons = Math.floor(gallons);
-                const remainingMl = ml - (wholeGallons * 3785);
+            if (isAllowed('gallon')) {
+                const gallons = ml / 3785;
                 
-                // Remainder as quarts or cups
-                const remainingQuarts = remainingMl / 946;
-                if (remainingQuarts >= 1 && noFractionalQuarts) {
-                    const wholeRemainingQuarts = Math.floor(remainingQuarts);
-                    const remainingAfterQuarts = remainingMl - (wholeRemainingQuarts * 946);
-                    const remainingCups = remainingAfterQuarts / 240;
-                    const roundedCups = Math.round(remainingCups * 4) / 4;
+                if (noFractionalGallons) {
+                    const wholeGallons = Math.floor(gallons);
+                    const remainingMl = ml - (wholeGallons * 3785);
                     
-                    // gal + qt (skip cups for simplicity at this scale)
-                    if (wholeRemainingQuarts > 0) {
-                        return { value: wholeGallons, unit: 'gal', remainder: wholeRemainingQuarts, remainderUnit: 'qt' };
+                    // Remainder as quarts or cups
+                    const remainingQuarts = remainingMl / 946;
+                    if (remainingQuarts >= 1 && noFractionalQuarts && isAllowed('quart')) {
+                        const wholeRemainingQuarts = Math.floor(remainingQuarts);
+                        
+                        // gal + qt (skip cups for simplicity at this scale)
+                        if (wholeRemainingQuarts > 0) {
+                            return { value: wholeGallons, unit: 'gal', remainder: wholeRemainingQuarts, remainderUnit: 'qt' };
+                        }
                     }
+                    
+                    const remainingCups = remainingMl / 240;
+                    const roundedCups = Math.round(remainingCups * 4) / 4;
+                    if (roundedCups >= 0.5 && isAllowed('cup')) {
+                        return { value: wholeGallons, unit: 'gal', remainder: roundedCups, remainderUnit: 'cup' };
+                    }
+                    return { value: wholeGallons, unit: 'gal' };
+                } else {
+                    const rounded = Math.round(gallons * 4) / 4;
+                    return { value: rounded, unit: 'gal' };
                 }
-                
-                const remainingCups = remainingMl / 240;
-                const roundedCups = Math.round(remainingCups * 4) / 4;
-                if (roundedCups >= 0.5) {
-                    return { value: wholeGallons, unit: 'gal', remainder: roundedCups, remainderUnit: 'cup' };
-                }
-                return { value: wholeGallons, unit: 'gal' };
-            } else {
-                const rounded = Math.round(gallons * 4) / 4;
-                return { value: rounded, unit: 'gal' };
             }
+            
+            // Fallback chain if gallon not allowed
+            if (isAllowed('quart')) {
+                const quarts = ml / 946;
+                return { value: Math.round(quarts * 4) / 4, unit: 'qt' };
+            }
+            if (isAllowed('cup')) {
+                const cups = ml / 240;
+                return { value: Math.round(cups * 4) / 4, unit: 'cup' };
+            }
+            if (isAllowed('liter')) {
+                const liters = ml / 1000;
+                return { value: Math.round(liters * 10) / 10, unit: 'L' };
+            }
+            return { value: Math.round(ml), unit: 'ml' };
         };
 
         /* STAGE 2: FORMAT DRY POWDERS (from grams)
@@ -486,30 +540,42 @@
          * - 300–2000 g → pounds
          * - Over 2000 g → pounds + ounces
          */
-        const formatDryPowder = (g, useMetric, density = 125, rules = {}) => {
+        const formatDryPowder = (g, useMetric, density = 125, rules = {}, allowed = null) => {
             const noFractionalPounds = rules.noFractionalPounds || false;
+            const isAllowed = (unit) => !allowed || allowed[unit] !== false;
             
             if (useMetric) {
                 if (g < 1) return { value: 0, unit: 'pinch' };
-                if (g < 1000) return { value: Math.round(g), unit: 'g' };
-                return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                if (g < 1000 || !isAllowed('kg')) {
+                    if (isAllowed('g')) return { value: Math.round(g), unit: 'g' };
+                }
+                if (isAllowed('kg')) return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                return { value: Math.round(g), unit: 'g' };
             }
             
             // Under 10g → teaspoons (approx 3g per tsp for powders)
             if (g < 10) {
                 if (g < 1) return { value: 0, unit: 'pinch' };
-                const tsp = g / 3;
-                return { value: Math.round(tsp * 4) / 4, unit: 'tsp' };
+                if (isAllowed('tsp')) {
+                    const tsp = g / 3;
+                    return { value: Math.round(tsp * 4) / 4, unit: 'tsp' };
+                }
             }
             
             // 10–50g → tablespoons (approx 9g per tbsp)
             if (g < 50) {
-                const tbsp = g / 9;
-                return { value: Math.round(tbsp * 4) / 4, unit: 'tbsp' };
+                if (isAllowed('tbsp')) {
+                    const tbsp = g / 9;
+                    return { value: Math.round(tbsp * 4) / 4, unit: 'tbsp' };
+                }
+                if (isAllowed('tsp')) {
+                    const tsp = g / 3;
+                    return { value: Math.round(tsp * 4) / 4, unit: 'tsp' };
+                }
             }
             
             // 50–300g → cups (use density)
-            if (g < 300) {
+            if (g < 300 && isAllowed('cup')) {
                 const cups = g / density;
                 const roundedQuarter = Math.round(cups * 4) / 4;
                 const roundedThird = Math.round(cups * 3) / 3;
@@ -521,19 +587,19 @@
             // 300g+ → pounds (with optional no-fractional rule)
             const lb = g / 453.592;
             
-            if (noFractionalPounds || g >= 2000) {
+            if ((noFractionalPounds || g >= 2000) && isAllowed('lb')) {
                 // Always use lb + oz for large amounts or when rule is enabled
                 const wholeLb = Math.floor(lb);
                 const remainingG = g - (wholeLb * 453.592);
                 const oz = remainingG / 28.3495;
-                if (oz >= 1) {
+                if (oz >= 1 && isAllowed('oz')) {
                     return { value: wholeLb, unit: 'lb', remainder: Math.round(oz), remainderUnit: 'oz' };
                 }
                 if (wholeLb > 0) {
                     return { value: wholeLb, unit: 'lb' };
                 }
                 // Less than 1 lb, show in oz
-                return { value: Math.round(g / 28.3495), unit: 'oz' };
+                if (isAllowed('oz')) return { value: Math.round(g / 28.3495), unit: 'oz' };
             }
             
             // Allow fractional pounds
@@ -548,22 +614,26 @@
          * - 200–1500 g → pounds
          * - Over 1500 g → pounds + ounces
          */
-        const formatBulkSolid = (g, useMetric, density = 150, rules = {}) => {
+        const formatBulkSolid = (g, useMetric, density = 150, rules = {}, allowed = null) => {
             const noFractionalPounds = rules.noFractionalPounds || false;
+            const isAllowed = (unit) => !allowed || allowed[unit] !== false;
             
             if (useMetric) {
-                if (g < 1000) return { value: Math.round(g), unit: 'g' };
-                return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                if (g < 1000 || !isAllowed('kg')) {
+                    if (isAllowed('g')) return { value: Math.round(g), unit: 'g' };
+                }
+                if (isAllowed('kg')) return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                return { value: Math.round(g), unit: 'g' };
             }
             
             // Under 50g → tablespoons
-            if (g < 50) {
+            if (g < 50 && isAllowed('tbsp')) {
                 const tbsp = g / 15;
                 return { value: Math.round(tbsp * 4) / 4, unit: 'tbsp' };
             }
             
             // 50–200g → cups
-            if (g < 200) {
+            if (g < 200 && isAllowed('cup')) {
                 const cups = g / density;
                 const roundedQuarter = Math.round(cups * 4) / 4;
                 const roundedThird = Math.round(cups * 3) / 3;
@@ -575,20 +645,22 @@
             // 200g+ → pounds
             const lb = g / 453.592;
             
-            if (noFractionalPounds || g >= 1500) {
+            if ((noFractionalPounds || g >= 1500) && isAllowed('lb')) {
                 const wholeLb = Math.floor(lb);
                 const remainingG = g - (wholeLb * 453.592);
                 const oz = remainingG / 28.3495;
-                if (oz >= 1) {
+                if (oz >= 1 && isAllowed('oz')) {
                     return { value: wholeLb, unit: 'lb', remainder: Math.round(oz), remainderUnit: 'oz' };
                 }
                 if (wholeLb > 0) {
                     return { value: wholeLb, unit: 'lb' };
                 }
-                return { value: Math.round(g / 28.3495), unit: 'oz' };
+                if (isAllowed('oz')) return { value: Math.round(g / 28.3495), unit: 'oz' };
             }
             
-            return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+            if (isAllowed('lb')) return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+            if (isAllowed('oz')) return { value: Math.round(g / 28.3495), unit: 'oz' };
+            return { value: Math.round(g), unit: 'g' };
         };
 
         /* STAGE 2: FORMAT MEAT (from grams)
@@ -598,12 +670,15 @@
          * - 500–2000 g → pounds
          * - Over 2000 g → pounds + ounces
          */
-        const formatMeat = (g, useMetric, rules = {}) => {
+        const formatMeat = (g, useMetric, rules = {}, allowed = null) => {
             const noFractionalPounds = rules.noFractionalPounds || false;
+            const isAllowed = (unit) => !allowed || allowed[unit] !== false;
             
             if (useMetric) {
-                if (g < 250) return { value: Math.round(g), unit: 'g' };
-                if (g < 1000) return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                if (g < 250 || !isAllowed('kg')) {
+                    if (isAllowed('g')) return { value: Math.round(g), unit: 'g' };
+                }
+                if (g < 1000 && isAllowed('kg')) return { value: Math.round(g / 100) / 10, unit: 'kg' };
                 return { value: Math.round(g / 100) / 10, unit: 'kg' };
             }
             
@@ -615,20 +690,22 @@
             // 200g+ → pounds
             const lb = g / 453.592;
             
-            if (noFractionalPounds || g >= 2000) {
+            if ((noFractionalPounds || g >= 2000) && isAllowed('lb')) {
                 const wholeLb = Math.floor(lb);
                 const remainingG = g - (wholeLb * 453.592);
                 const oz = remainingG / 28.3495;
-                if (oz >= 1) {
+                if (oz >= 1 && isAllowed('oz')) {
                     return { value: wholeLb, unit: 'lb', remainder: Math.round(oz), remainderUnit: 'oz' };
                 }
                 if (wholeLb > 0) {
                     return { value: wholeLb, unit: 'lb' };
                 }
-                return { value: Math.round(g / 28.3495), unit: 'oz' };
+                if (isAllowed('oz')) return { value: Math.round(g / 28.3495), unit: 'oz' };
             }
             
-            return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+            if (isAllowed('lb')) return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+            if (isAllowed('oz')) return { value: Math.round(g / 28.3495), unit: 'oz' };
+            return { value: Math.round(g), unit: 'g' };
         };
 
         /* SMART WEIGHT CONVERSION
@@ -636,8 +713,14 @@
          * Input: grams (base unit from Stage 1)
          * Unknown ingredients default to simple weight display (g or oz)
          */
-        const smartConvertWeight = (g, useMetric, ingredientName = '', rules = {}) => {
+        const smartConvertWeight = (g, useMetric, ingredientName = '', rules = {}, allowed = null) => {
             const lower = ingredientName.toLowerCase();
+            
+            // Helper to check if unit is allowed
+            const isAllowed = (unit) => {
+                if (!allowed) return true;
+                return allowed[unit] !== false;
+            };
             
             // Classify ingredient
             const classification = classifyIngredient(ingredientName);
@@ -645,17 +728,17 @@
             
             // Route to appropriate formatter based on classification
             if (classification === 'dryPowders' || classification === 'granular') {
-                return formatDryPowder(g, useMetric, density, rules);
+                return formatDryPowder(g, useMetric, density, rules, allowed);
             }
             
             if (classification === 'leafyHerbs' || classification === 'strongSpices') {
                 // Herbs and spices: always small amounts, use tsp/tbsp
-                return formatDryPowder(g, useMetric, density, rules);
+                return formatDryPowder(g, useMetric, density, rules, allowed);
             }
             
             if (classification === 'fats') {
                 // Fats like butter - use dry powder logic (works well for tbsp/cups)
-                return formatDryPowder(g, useMetric, density, rules);
+                return formatDryPowder(g, useMetric, density, rules, allowed);
             }
             
             // Check for meat keywords
@@ -663,7 +746,7 @@
                 lower.includes('lamb') || lower.includes('turkey') || lower.includes('meat') ||
                 lower.includes('steak') || lower.includes('roast') || lower.includes('ground') ||
                 lower.includes('sausage') || lower.includes('bacon') || lower.includes('ham')) {
-                return formatMeat(g, useMetric, rules);
+                return formatMeat(g, useMetric, rules, allowed);
             }
             
             // Check for bulk solid keywords (nuts, chips, etc.)
@@ -671,7 +754,7 @@
                 lower.includes('diced') || lower.includes('almond') || lower.includes('walnut') ||
                 lower.includes('pecan') || lower.includes('cashew') || lower.includes('raisin') ||
                 lower.includes('cranberr') || lower.includes('chocolate') || lower.includes('seed')) {
-                return formatBulkSolid(g, useMetric, density, rules);
+                return formatBulkSolid(g, useMetric, density, rules, allowed);
             }
             
             // UNKNOWN INGREDIENT: Safe fallback - just show weight directly
@@ -679,27 +762,32 @@
             
             if (useMetric) {
                 if (g < 1) return { value: 0, unit: 'pinch' };
-                if (g < 1000) return { value: Math.round(g), unit: 'g' };
-                return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                if (g < 1000 || !isAllowed('kg')) {
+                    if (isAllowed('g')) return { value: Math.round(g), unit: 'g' };
+                }
+                if (isAllowed('kg')) return { value: Math.round(g / 100) / 10, unit: 'kg' };
+                return { value: Math.round(g), unit: 'g' };
             } else {
                 // Imperial: show in oz for small amounts, lb for large
                 if (g < 1) return { value: 0, unit: 'pinch' };
                 const oz = g / 28.3495;
-                if (oz < 16) {
-                    return { value: Math.round(oz * 4) / 4, unit: 'oz' };
+                if (oz < 16 || !isAllowed('lb')) {
+                    if (isAllowed('oz')) return { value: Math.round(oz * 4) / 4, unit: 'oz' };
                 }
                 const lb = g / 453.592;
                 
-                if (noFractionalPounds) {
+                if (noFractionalPounds && isAllowed('lb')) {
                     const wholeLb = Math.floor(lb);
                     const remainingOz = (g - wholeLb * 453.592) / 28.3495;
-                    if (remainingOz >= 1) {
+                    if (remainingOz >= 1 && isAllowed('oz')) {
                         return { value: wholeLb, unit: 'lb', remainder: Math.round(remainingOz), remainderUnit: 'oz' };
                     }
                     return { value: wholeLb, unit: 'lb' };
                 }
                 
-                return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+                if (isAllowed('lb')) return { value: Math.round(lb * 4) / 4, unit: 'lb' };
+                if (isAllowed('oz')) return { value: Math.round(oz * 4) / 4, unit: 'oz' };
+                return { value: Math.round(g), unit: 'g' }; // fallback to metric
             }
         };
 
@@ -1476,6 +1564,27 @@
                 roundEggsUp: true,           // 2.3 eggs → 3 eggs
             });
             
+            // Allowed units for auto-conversion (disabled units won't be chosen automatically)
+            const [allowedUnits, setAllowedUnits] = useState({
+                // Volume - US
+                tsp: true,
+                tbsp: true,
+                'fl oz': true,
+                cup: true,
+                pint: true,
+                quart: true,
+                gallon: true,
+                // Volume - Metric
+                ml: true,
+                liter: true,
+                // Weight - US
+                oz: true,
+                lb: true,
+                // Weight - Metric
+                g: true,
+                kg: true,
+            });
+            
             // Theme settings
             const [themeSettings, setThemeSettings] = useState({
                 colorTheme: 'slate',    // slate, forest, ocean, wine, charcoal, claude
@@ -1688,6 +1797,12 @@
                     setDisplayRules(JSON.parse(rules));
                 }
                 
+                // Load allowed units
+                const savedAllowedUnits = localStorage.getItem('allowedUnits');
+                if (savedAllowedUnits) {
+                    setAllowedUnits(JSON.parse(savedAllowedUnits));
+                }
+                
                 // Load theme settings
                 const savedTheme = localStorage.getItem('themeSettings');
                 if (savedTheme) {
@@ -1804,6 +1919,12 @@
                 const updated = { ...displayRules, [rule]: value };
                 setDisplayRules(updated);
                 localStorage.setItem('displayRules', JSON.stringify(updated));
+            };
+            
+            const updateAllowedUnit = (unit, allowed) => {
+                const updated = { ...allowedUnits, [unit]: allowed };
+                setAllowedUnits(updated);
+                localStorage.setItem('allowedUnits', JSON.stringify(updated));
             };
             
             const updateThemeSetting = (setting, value) => {
@@ -1981,20 +2102,74 @@
                 // Check if there's a unit override for this ingredient
                 const overrideUnit = unitOverrides[idx];
                 
+                // Helper for smart unit override with remainders
+                const convertWithRemainder = (baseValue, targetUnit, type) => {
+                    if (type === 'volume') {
+                        const targetFactor = VOLUME_CONVERSIONS[targetUnit];
+                        const value = baseValue / targetFactor;
+                        
+                        // Define remainder relationships for volume
+                        const remainderMap = {
+                            'gallon': { sub: 'quart', factor: 4 },
+                            'quart': { sub: 'cup', factor: 4 },
+                            'pint': { sub: 'cup', factor: 2 },
+                            'cup': { sub: 'tbsp', factor: 16 },
+                            'tbsp': { sub: 'tsp', factor: 3 },
+                            'liter': { sub: 'ml', factor: 1000 },
+                        };
+                        
+                        const remainder = remainderMap[targetUnit];
+                        if (remainder && value >= 1) {
+                            const whole = Math.floor(value);
+                            const fractional = value - whole;
+                            if (fractional >= 0.1) { // Only show remainder if meaningful
+                                const remainderValue = fractional * remainder.factor;
+                                const roundedRemainder = Math.round(remainderValue * 4) / 4;
+                                if (roundedRemainder >= 0.25) {
+                                    return { value: whole, unit: targetUnit, remainder: roundedRemainder, remainderUnit: remainder.sub };
+                                }
+                            }
+                            return { value: whole, unit: targetUnit };
+                        }
+                        return { value: Math.round(value * 4) / 4, unit: targetUnit };
+                    } else if (type === 'weight') {
+                        const targetFactor = WEIGHT_CONVERSIONS[targetUnit];
+                        const value = baseValue / targetFactor;
+                        
+                        // Define remainder relationships for weight
+                        const remainderMap = {
+                            'lb': { sub: 'oz', factor: 16 },
+                            'kg': { sub: 'g', factor: 1000 },
+                        };
+                        
+                        const remainder = remainderMap[targetUnit];
+                        if (remainder && value >= 1) {
+                            const whole = Math.floor(value);
+                            const fractional = value - whole;
+                            if (fractional >= 0.1) {
+                                const remainderValue = fractional * remainder.factor;
+                                const roundedRemainder = Math.round(remainderValue);
+                                if (roundedRemainder >= 1) {
+                                    return { value: whole, unit: targetUnit, remainder: roundedRemainder, remainderUnit: remainder.sub };
+                                }
+                            }
+                            return { value: whole, unit: targetUnit };
+                        }
+                        return { value: Math.round(value * 4) / 4, unit: targetUnit };
+                    }
+                    return { value: baseValue, unit: targetUnit };
+                };
+                
                 if (ingredient.type === 'volume') {
                     if (overrideUnit) {
-                        // Convert to specific unit
-                        const conversionFactor = VOLUME_CONVERSIONS[overrideUnit];
-                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                        return convertWithRemainder(scaledBaseValue, overrideUnit, 'volume');
                     }
-                    return smartConvertVolume(scaledBaseValue, useMetric, ingredient.ingredient, displayRules);
+                    return smartConvertVolume(scaledBaseValue, useMetric, ingredient.ingredient, displayRules, allowedUnits);
                 } else if (ingredient.type === 'weight') {
                     if (overrideUnit) {
-                        // Convert to specific unit
-                        const conversionFactor = WEIGHT_CONVERSIONS[overrideUnit];
-                        return { value: scaledBaseValue / conversionFactor, unit: overrideUnit };
+                        return convertWithRemainder(scaledBaseValue, overrideUnit, 'weight');
                     }
-                    return smartConvertWeight(scaledBaseValue, useMetric, ingredient.ingredient, displayRules);
+                    return smartConvertWeight(scaledBaseValue, useMetric, ingredient.ingredient, displayRules, allowedUnits);
                 } else if (ingredient.type === 'count') {
                     // For count items, just scale the number
                     let value = scaledBaseValue;
@@ -2027,10 +2202,10 @@
                 // Use the same conversion logic based on type
                 if (alternative.type === 'volume') {
                     const scaledBaseValue = alternative.baseValue * scaleFactor;
-                    return smartConvertVolume(scaledBaseValue, useMetric, alternative.ingredient || '', displayRules);
+                    return smartConvertVolume(scaledBaseValue, useMetric, alternative.ingredient || '', displayRules, allowedUnits);
                 } else if (alternative.type === 'weight') {
                     const scaledBaseValue = alternative.baseValue * scaleFactor;
-                    return smartConvertWeight(scaledBaseValue, useMetric, alternative.ingredient || '', displayRules);
+                    return smartConvertWeight(scaledBaseValue, useMetric, alternative.ingredient || '', displayRules, allowedUnits);
                 } else if (alternative.type === 'count') {
                     return { value: scaledQuantity, unit: '' };
                 } else {
@@ -2484,6 +2659,88 @@
                                                 When you paste recipes with these terms, the app will warn you they're ambiguous and prompt you to define them here.
                                             </p>
                                         )}
+                                    </div>
+                                </div>
+                                
+                                {/* Allowed Units Section */}
+                                <div className="mb-8">
+                                    <h3 className={`${fontSize.heading} font-bold ${theme.accent} mb-3`}>Allowed Units</h3>
+                                    <p className={`${theme.textMuted} ${fontSize.mb}`}>
+                                        Control which units auto-conversion can use. Disabled units won't be chosen automatically, but remain available in the manual unit override dropdown.
+                                    </p>
+                                    
+                                    <div className={`${theme.bgTertiary} ${fontSize.padding} rounded-lg`}>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            {/* Volume Units */}
+                                            <div>
+                                                <h4 className={`font-semibold ${theme.text} mb-2`}>Volume</h4>
+                                                <div className={`${fontSize.space}`}>
+                                                    <div className={`${theme.textMuted} text-xs mb-1`}>US</div>
+                                                    <div className="flex flex-wrap gap-2 mb-2">
+                                                        {['tsp', 'tbsp', 'fl oz', 'cup', 'pint', 'quart', 'gallon'].map(unit => (
+                                                            <label key={unit} className={`flex items-center gap-1.5 cursor-pointer ${fontSize.base}`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={allowedUnits[unit]}
+                                                                    onChange={(e) => updateAllowedUnit(unit, e.target.checked)}
+                                                                    className="w-3.5 h-3.5"
+                                                                />
+                                                                <span className={allowedUnits[unit] ? theme.text : theme.textMuted}>{unit}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    <div className={`${theme.textMuted} text-xs mb-1`}>Metric</div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {['ml', 'liter'].map(unit => (
+                                                            <label key={unit} className={`flex items-center gap-1.5 cursor-pointer ${fontSize.base}`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={allowedUnits[unit]}
+                                                                    onChange={(e) => updateAllowedUnit(unit, e.target.checked)}
+                                                                    className="w-3.5 h-3.5"
+                                                                />
+                                                                <span className={allowedUnits[unit] ? theme.text : theme.textMuted}>{unit}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Weight Units */}
+                                            <div>
+                                                <h4 className={`font-semibold ${theme.text} mb-2`}>Weight</h4>
+                                                <div className={`${fontSize.space}`}>
+                                                    <div className={`${theme.textMuted} text-xs mb-1`}>US</div>
+                                                    <div className="flex flex-wrap gap-2 mb-2">
+                                                        {['oz', 'lb'].map(unit => (
+                                                            <label key={unit} className={`flex items-center gap-1.5 cursor-pointer ${fontSize.base}`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={allowedUnits[unit]}
+                                                                    onChange={(e) => updateAllowedUnit(unit, e.target.checked)}
+                                                                    className="w-3.5 h-3.5"
+                                                                />
+                                                                <span className={allowedUnits[unit] ? theme.text : theme.textMuted}>{unit}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                    <div className={`${theme.textMuted} text-xs mb-1`}>Metric</div>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {['g', 'kg'].map(unit => (
+                                                            <label key={unit} className={`flex items-center gap-1.5 cursor-pointer ${fontSize.base}`}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={allowedUnits[unit]}
+                                                                    onChange={(e) => updateAllowedUnit(unit, e.target.checked)}
+                                                                    className="w-3.5 h-3.5"
+                                                                />
+                                                                <span className={allowedUnits[unit] ? theme.text : theme.textMuted}>{unit}</span>
+                                                            </label>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 
