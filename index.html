@@ -2107,6 +2107,7 @@
                     if (type === 'volume') {
                         const targetFactor = VOLUME_CONVERSIONS[targetUnit];
                         const value = baseValue / targetFactor;
+                        const preciseValue = value; // Store for debug
                         
                         // Define remainder relationships for volume
                         const remainderMap = {
@@ -2119,22 +2120,28 @@
                         };
                         
                         const remainder = remainderMap[targetUnit];
-                        if (remainder && value >= 1) {
+                        if (remainder) {
                             const whole = Math.floor(value);
                             const fractional = value - whole;
-                            if (fractional >= 0.1) { // Only show remainder if meaningful
-                                const remainderValue = fractional * remainder.factor;
-                                const roundedRemainder = Math.round(remainderValue * 4) / 4;
-                                if (roundedRemainder >= 0.25) {
-                                    return { value: whole, unit: targetUnit, remainder: roundedRemainder, remainderUnit: remainder.sub };
-                                }
+                            const remainderValue = fractional * remainder.factor;
+                            const roundedRemainder = Math.round(remainderValue * 4) / 4;
+                            
+                            if (whole >= 1 && roundedRemainder >= 0.25) {
+                                return { value: whole, unit: targetUnit, remainder: roundedRemainder, remainderUnit: remainder.sub, preciseValue, preciseUnit: targetUnit };
+                            } else if (whole >= 1) {
+                                return { value: whole, unit: targetUnit, preciseValue, preciseUnit: targetUnit };
+                            } else if (roundedRemainder >= 0.25) {
+                                // Less than 1 whole unit, just show in sub-unit
+                                return { value: roundedRemainder, unit: remainder.sub, preciseValue, preciseUnit: targetUnit };
                             }
-                            return { value: whole, unit: targetUnit };
                         }
-                        return { value: Math.round(value * 4) / 4, unit: targetUnit };
+                        // No remainder mapping or small value - round to quarter
+                        const rounded = Math.round(value * 4) / 4;
+                        return { value: rounded, unit: targetUnit, preciseValue, preciseUnit: targetUnit };
                     } else if (type === 'weight') {
                         const targetFactor = WEIGHT_CONVERSIONS[targetUnit];
                         const value = baseValue / targetFactor;
+                        const preciseValue = value;
                         
                         // Define remainder relationships for weight
                         const remainderMap = {
@@ -2143,19 +2150,22 @@
                         };
                         
                         const remainder = remainderMap[targetUnit];
-                        if (remainder && value >= 1) {
+                        if (remainder) {
                             const whole = Math.floor(value);
                             const fractional = value - whole;
-                            if (fractional >= 0.1) {
-                                const remainderValue = fractional * remainder.factor;
-                                const roundedRemainder = Math.round(remainderValue);
-                                if (roundedRemainder >= 1) {
-                                    return { value: whole, unit: targetUnit, remainder: roundedRemainder, remainderUnit: remainder.sub };
-                                }
+                            const remainderValue = fractional * remainder.factor;
+                            const roundedRemainder = Math.round(remainderValue);
+                            
+                            if (whole >= 1 && roundedRemainder >= 1) {
+                                return { value: whole, unit: targetUnit, remainder: roundedRemainder, remainderUnit: remainder.sub, preciseValue, preciseUnit: targetUnit };
+                            } else if (whole >= 1) {
+                                return { value: whole, unit: targetUnit, preciseValue, preciseUnit: targetUnit };
+                            } else if (roundedRemainder >= 1) {
+                                return { value: roundedRemainder, unit: remainder.sub, preciseValue, preciseUnit: targetUnit };
                             }
-                            return { value: whole, unit: targetUnit };
                         }
-                        return { value: Math.round(value * 4) / 4, unit: targetUnit };
+                        const rounded = Math.round(value * 4) / 4;
+                        return { value: rounded, unit: targetUnit, preciseValue, preciseUnit: targetUnit };
                     }
                     return { value: baseValue, unit: targetUnit };
                 };
@@ -2164,12 +2174,22 @@
                     if (overrideUnit) {
                         return convertWithRemainder(scaledBaseValue, overrideUnit, 'volume');
                     }
-                    return smartConvertVolume(scaledBaseValue, useMetric, ingredient.ingredient, displayRules, allowedUnits);
+                    const result = smartConvertVolume(scaledBaseValue, useMetric, ingredient.ingredient, displayRules, allowedUnits);
+                    // Add precise value for debug display (base value in tsp, convert to result unit)
+                    const targetFactor = VOLUME_CONVERSIONS[result.unit] || 1;
+                    result.preciseValue = scaledBaseValue / targetFactor;
+                    result.preciseUnit = result.unit;
+                    return result;
                 } else if (ingredient.type === 'weight') {
                     if (overrideUnit) {
                         return convertWithRemainder(scaledBaseValue, overrideUnit, 'weight');
                     }
-                    return smartConvertWeight(scaledBaseValue, useMetric, ingredient.ingredient, displayRules, allowedUnits);
+                    const result = smartConvertWeight(scaledBaseValue, useMetric, ingredient.ingredient, displayRules, allowedUnits);
+                    // Add precise value for debug display (base value in g, convert to result unit)
+                    const targetFactor = WEIGHT_CONVERSIONS[result.unit] || 1;
+                    result.preciseValue = scaledBaseValue / targetFactor;
+                    result.preciseUnit = result.unit;
+                    return result;
                 } else if (ingredient.type === 'count') {
                     // For count items, just scale the number
                     let value = scaledBaseValue;
@@ -2184,7 +2204,7 @@
                         }
                     }
                     
-                    return { value: value, unit: '' };
+                    return { value: value, unit: '', preciseValue: scaledBaseValue, preciseUnit: 'count' };
                 }
             };
 
@@ -3128,6 +3148,11 @@
                                                                         <span className={`${theme.textMuted} opacity-50`}>
                                                                             originally {ingredient.quantity} {ingredient.unit}
                                                                         </span>
+                                                                        {scaled.preciseValue !== undefined && (
+                                                                            <span className={`${theme.textMuted} opacity-40 font-mono`}>
+                                                                                = {scaled.preciseValue.toFixed(4)} {scaled.preciseUnit || scaled.unit}
+                                                                            </span>
+                                                                        )}
                                                                     </div>
                                                                 )}
                                                                 
